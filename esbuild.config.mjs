@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
+import vuePlugin from "esbuild-plugin-vue3"; // 新增：引入 Vue 插件
 
 const banner =
 `/*
@@ -15,8 +16,9 @@ const context = await esbuild.context({
 	banner: {
 		js: banner,
 	},
-	entryPoints: ["main.ts"],
+	entryPoints: ["src/main.ts"],
 	bundle: true,
+	plugins: [vuePlugin()], // 新增：添加 Vue 插件
 	external: [
 		"obsidian",
 		"electron",

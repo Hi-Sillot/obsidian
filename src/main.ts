@@ -1,6 +1,6 @@
+// main.ts
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
-
-// Remember to rename these classes and interfaces!
+import { VueSamplePluginSettingTab } from './setting-tab';
 
 interface MyPluginSettings {
 	mySetting: string;
@@ -15,6 +15,9 @@ export default class MyPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		 // 加入插件设置页
+        this.addSettingTab(new VueSamplePluginSettingTab(this.app, this));
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (_evt: MouseEvent) => {
@@ -65,9 +68,6 @@ export default class MyPlugin extends Plugin {
 			}
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
 		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// Using this function will automatically remove the event listener when this plugin is disabled.
 		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
@@ -107,6 +107,9 @@ class SampleModal extends Modal {
 	}
 }
 
+/**
+ * obsidian默认配置界面
+ */
 class SampleSettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
 
