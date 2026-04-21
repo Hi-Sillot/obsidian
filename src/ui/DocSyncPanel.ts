@@ -2,6 +2,7 @@ import { MarkdownView, Modal, Notice, Platform, TFile, Setting, type ViewStateRe
 import type VuePressPublisherPlugin from '../main';
 import type { ParsedSyncBlock, PublishStatus, FilePublishInfo, DiffResult, DiffCompareSource } from '../types';
 import type { TaskTracker } from '../utils/TaskTracker';
+import { generatePublishId, setPublishIdInContent } from '../sync/PublishStatusChecker';
 
 const PANEL_CLASS = 'sillot-doc-sync-panel';
 const PANEL_CONTAINER_CLASS = 'sillot-doc-sync-panel-container';
@@ -28,6 +29,8 @@ export class DocSyncPanel {
 	private taskTrackerUnsubscribe: (() => void) | null = null;
 	private lastModeKey: string = '';
 	private modeCheckInterval: number | null = null;
+	private renderGen = 0;
+	private updateTimer: number | null = null;
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -76,6 +79,10 @@ export class DocSyncPanel {
 	}
 
 	destroy() {
+		if (this.updateTimer) {
+			window.clearTimeout(this.updateTimer);
+			this.updateTimer = null;
+		}
 		if (this.modeCheckInterval) {
 			window.clearInterval(this.modeCheckInterval);
 			this.modeCheckInterval = null;
@@ -94,10 +101,24 @@ export class DocSyncPanel {
 	private setState(s: PanelState) {
 		this.plugin.settings.docSyncPanelState = s;
 		this.plugin.saveSettings();
-		this.renderPanel();
+		this.scheduleRender();
+	}
+
+	private scheduleRender() {
+		requestAnimationFrame(() => this.renderPanel());
 	}
 
 	update() {
+		if (this.updateTimer) {
+			window.clearTimeout(this.updateTimer);
+		}
+		this.updateTimer = window.setTimeout(() => {
+			this.updateTimer = null;
+			this.doUpdate();
+		}, 50);
+	}
+
+	private doUpdate() {
 		const activeLeaf = this.plugin.app.workspace.activeLeaf;
 		if (!activeLeaf || !(activeLeaf.view instanceof MarkdownView)) {
 			this.removePanel();
@@ -117,8 +138,8 @@ export class DocSyncPanel {
 		document.querySelectorAll(`.${PANEL_CONTAINER_CLASS}`).forEach(el => {
 			if (el !== this.panelEl) el.remove();
 		});
-		const existing = view.containerEl.querySelector(`:scope > .${PANEL_CONTAINER_CLASS}`);
-		if (existing) {
+		const existing = view.containerEl.querySelector(`.${PANEL_CONTAINER_CLASS}`);
+		if (existing && existing.parentElement === view.containerEl) {
 			this.panelEl = existing as HTMLElement;
 			return;
 		}
@@ -139,7 +160,11 @@ export class DocSyncPanel {
 	private async renderPanel() {
 		if (!this.panelEl || !this.currentFile) return;
 
+		const gen = ++this.renderGen;
+
 		const content = await this.plugin.app.vault.read(this.currentFile);
+		if (gen !== this.renderGen) return;
+
 		const syncManager = this.plugin.syncManager;
 		const blocks = syncManager
 			? syncManager.parseSyncBlocks(content, this.currentFile.path)
@@ -153,12 +178,14 @@ export class DocSyncPanel {
 			try {
 				this.publishInfo = await checker.checkFileStatus(this.currentFile);
 			} catch {}
+			if (gen !== this.renderGen) return;
 			try {
 				this.diffResult = await checker.computeDiff(this.currentFile, this.compareSource);
 				if (this.diffResult) {
 					this.compareSource = this.diffResult.compareSource;
 				}
 			} catch {}
+			if (gen !== this.renderGen) return;
 		}
 
 		this.panelEl.empty();
@@ -619,6 +646,19 @@ export class DocSyncPanel {
 			pathRow.createEl('td', { text: info.vuepressPath, cls: `${PANEL_CLASS}-publish-info-path` });
 		}
 
+		const idRow = tbody.createEl('tr');
+		idRow.createEl('td', { text: '发布ID', cls: `${PANEL_CLASS}-publish-info-label` });
+		const idCell = idRow.createEl('td');
+		if (info.publishId) {
+			const idSpan = idCell.createEl('span', { text: info.publishId, cls: `${PANEL_CLASS}-publish-id` });
+			const editBtn = idCell.createEl('button', { text: '✏️', cls: `${PANEL_CLASS}-publish-id-edit-btn`, attr: { title: '修改发布ID' } });
+			editBtn.onclick = () => this.editPublishId();
+		} else {
+			const warnSpan = idCell.createEl('span', { text: '⚠️ 无发布ID', cls: `${PANEL_CLASS}-publish-id-missing` });
+			const genBtn = idCell.createEl('button', { text: '生成', cls: `${PANEL_CLASS}-publish-id-gen-btn`, attr: { title: '生成发布ID' } });
+			genBtn.onclick = () => this.generatePublishId();
+		}
+
 		if (this.diffResult && (this.diffResult.addedCount > 0 || this.diffResult.removedCount > 0)) {
 			const diffRow = tbody.createEl('tr');
 			diffRow.createEl('td', { text: '差异', cls: `${PANEL_CLASS}-publish-info-label` });
@@ -828,6 +868,88 @@ export class DocSyncPanel {
 		new Notice('已复制 Diff 为 Markdown 代码块', 2000);
 	}
 
+	private async editPublishId() {
+		if (!this.currentFile || !this.publishInfo) return;
+
+		const currentId = this.publishInfo.publishId || '';
+		const newId = await new Promise<string | null>((resolve) => {
+			const modal = new Modal(this.plugin.app);
+			modal.titleEl.setText('修改发布ID');
+			modal.contentEl.createEl('p', { text: '发布ID用于唯一标识文档，修改后可能影响发布状态匹配。' });
+
+			const input = modal.contentEl.createEl('input', {
+				type: 'text',
+				cls: `${PANEL_CLASS}-publish-id-input`,
+				attr: { value: currentId, placeholder: 'pub_YYYYMMDD_xxxxxx' },
+			}) as HTMLInputElement;
+			input.style.width = '100%';
+			input.style.marginTop = '8px';
+
+			const warnEl = modal.contentEl.createEl('p', {
+				text: '⚠️ 修改发布ID可能导致文档与已发布版本失去关联',
+				cls: `${PANEL_CLASS}-publish-id-warn`,
+			});
+			warnEl.style.color = 'var(--text-warning)';
+			warnEl.style.fontSize = '12px';
+			warnEl.style.display = 'none';
+
+			input.addEventListener('input', () => {
+				const val = input.value.trim();
+				if (val && val !== currentId) {
+					warnEl.style.display = 'block';
+				} else {
+					warnEl.style.display = 'none';
+				}
+			});
+
+			const btnContainer = modal.contentEl.createDiv({ cls: `${PANEL_CLASS}-publish-id-btns` });
+			btnContainer.style.display = 'flex';
+			btnContainer.style.gap = '8px';
+			btnContainer.style.marginTop = '12px';
+			btnContainer.style.justifyContent = 'flex-end';
+
+			const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+			cancelBtn.onclick = () => { modal.close(); resolve(null); };
+
+			const saveBtn = btnContainer.createEl('button', { text: '保存', cls: 'mod-cta' });
+			saveBtn.onclick = () => { modal.close(); resolve(input.value.trim()); };
+
+			modal.open();
+			setTimeout(() => { input.focus(); input.select(); }, 100);
+		});
+
+		if (newId === null || newId === currentId) return;
+
+		try {
+			const content = await this.plugin.app.vault.read(this.currentFile);
+			const newContent = setPublishIdInContent(content, newId);
+			await this.plugin.app.vault.modify(this.currentFile, newContent);
+			this.publishInfo.publishId = newId;
+			this.renderPanel();
+			new Notice(`发布ID已更新为: ${newId}`);
+		} catch (e) {
+			new Notice(`更新发布ID失败: ${e.message}`);
+		}
+	}
+
+	private async generatePublishId() {
+		if (!this.currentFile) return;
+
+		try {
+			const content = await this.plugin.app.vault.read(this.currentFile);
+			const newId = generatePublishId();
+			const newContent = setPublishIdInContent(content, newId);
+			await this.plugin.app.vault.modify(this.currentFile, newContent);
+			if (this.publishInfo) {
+				this.publishInfo.publishId = newId;
+			}
+			this.renderPanel();
+			new Notice(`已生成发布ID: ${newId}`);
+		} catch (e) {
+			new Notice(`生成发布ID失败: ${e.message}`);
+		}
+	}
+
 	private async rollbackToPublishedVersion(diff: DiffResult) {
 		if (!this.currentFile) return;
 		const sourceLabel = diff.compareSource === 'local' ? '本地' : '云端';
@@ -840,10 +962,18 @@ export class DocSyncPanel {
 
 		try {
 			await this.plugin.app.vault.modify(this.currentFile, diff.publishedContent);
+			await this.touchLocalPublishedFile(this.currentFile);
 			new Notice(`已回滚到${sourceLabel}发布版本`);
 			this.renderPanel();
 		} catch (e) {
 			new Notice(`回滚失败：${e.message}`);
+		}
+	}
+
+	private async touchLocalPublishedFile(file: TFile) {
+		const checker = this.plugin.publishStatusChecker;
+		if (checker) {
+			await checker.touchPublishedFile(file);
 		}
 	}
 
@@ -871,11 +1001,11 @@ export class DocSyncPanel {
 			notice.hide();
 			new Notice(`同步完成：${result.synced} 项，冲突 ${result.conflicts} 项`);
 			this.renderPanel();
+			this.plugin.taskTracker.endTask(taskId, 'success');
 		} catch (error) {
 			notice.hide();
 			new Notice(`同步失败：${error.message}`);
-		} finally {
-			this.plugin.taskTracker.endTask(taskId);
+			this.plugin.taskTracker.endTask(taskId, 'failed', error.message);
 		}
 	}
 
@@ -896,17 +1026,18 @@ export class DocSyncPanel {
 				this.plugin.cleanVaultSyncPaths();
 				this.renderPanel();
 				this.plugin.refreshPublishPanel();
+				this.plugin.taskTracker.endTask(taskId, 'success');
 			} catch (e) {
 				new Notice(`本地发布失败：${e.message}`);
-			} finally {
-				this.plugin.taskTracker.endTask(taskId);
+				this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
 			}
 		} else {
 			this.plugin.taskTracker.startTask(taskId, '发布到 GitHub 中...');
 			try {
 				this.plugin.publishFile(this.currentFile);
-			} finally {
-				this.plugin.taskTracker.endTask(taskId);
+				this.plugin.taskTracker.endTask(taskId, 'success');
+			} catch (e) {
+				this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
 			}
 		}
 	}

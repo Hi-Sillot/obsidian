@@ -5,6 +5,51 @@ import type { Logger } from '../utils/Logger';
 
 const TAG = 'PublishStatus';
 
+export function generatePublishId(): string {
+	const now = new Date();
+	const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+	const rand = Math.random().toString(36).substring(2, 8);
+	return `pub_${ts}_${rand}`;
+}
+
+export function extractPublishIdFromContent(content: string): string | null {
+	const lines = content.split(/\r?\n/);
+	if (lines[0] !== '---') return null;
+	const endIdx = lines.indexOf('---', 1);
+	if (endIdx === -1) return null;
+
+	for (let i = 1; i < endIdx; i++) {
+		const line = lines[i];
+		if (line.startsWith('publishId:') || line.startsWith('publishId :')) {
+			const value = line.substring(line.indexOf(':') + 1).trim().replace(/^['"]|['"]$/g, '');
+			return value || null;
+		}
+	}
+	return null;
+}
+
+export function setPublishIdInContent(content: string, publishId: string): string {
+	const lines = content.split(/\r?\n/);
+	if (lines[0] !== '---') {
+		return `---\npublishId: ${publishId}\n---\n${content}`;
+	}
+
+	const endIdx = lines.indexOf('---', 1);
+	if (endIdx === -1) {
+		return `---\npublishId: ${publishId}\n---\n${content}`;
+	}
+
+	for (let i = 1; i < endIdx; i++) {
+		if (lines[i].startsWith('publishId:') || lines[i].startsWith('publishId :')) {
+			lines[i] = `publishId: ${publishId}`;
+			return lines.join('\n');
+		}
+	}
+
+	const newLines = [...lines.slice(0, endIdx), `publishId: ${publishId}`, ...lines.slice(endIdx)];
+	return newLines.join('\n');
+}
+
 export class PublishStatusChecker {
 	private app: App;
 	private localVuePressRoot: string;
@@ -14,6 +59,9 @@ export class PublishStatusChecker {
 	private vaultSyncPaths: string[];
 	private pathMapEntries: PathMapEntry[] = [];
 	private logger: Logger | null;
+	private githubRepo: string = '';
+	private githubToken: string = '';
+	private githubBranch: string = '';
 
 	constructor(app: App, options: {
 		localVuePressRoot: string;
@@ -21,6 +69,9 @@ export class PublishStatusChecker {
 		vuepressDocsDir: string;
 		publishRootPath?: string;
 		vaultSyncPaths?: string[];
+		githubRepo?: string;
+		githubToken?: string;
+		githubBranch?: string;
 		logger?: Logger;
 	}) {
 		this.app = app;
@@ -29,6 +80,9 @@ export class PublishStatusChecker {
 		this.vuepressDocsDir = options.vuepressDocsDir;
 		this.publishRootPath = (options.publishRootPath || '').replace(/^\/+|\/+$/g, '');
 		this.vaultSyncPaths = options.vaultSyncPaths || ['/'];
+		this.githubRepo = options.githubRepo || '';
+		this.githubToken = options.githubToken || '';
+		this.githubBranch = options.githubBranch || '';
 		this.logger = options.logger || null;
 	}
 
@@ -38,12 +92,18 @@ export class PublishStatusChecker {
 		vuepressDocsDir?: string;
 		publishRootPath?: string;
 		vaultSyncPaths?: string[];
+		githubRepo?: string;
+		githubToken?: string;
+		githubBranch?: string;
 	}) {
 		if (options.localVuePressRoot !== undefined) this.localVuePressRoot = options.localVuePressRoot;
 		if (options.siteDomain !== undefined) this.siteDomain = options.siteDomain;
 		if (options.vuepressDocsDir !== undefined) this.vuepressDocsDir = options.vuepressDocsDir;
 		if (options.publishRootPath !== undefined) this.publishRootPath = options.publishRootPath.replace(/^\/+|\/+$/g, '');
 		if (options.vaultSyncPaths !== undefined) this.vaultSyncPaths = options.vaultSyncPaths;
+		if (options.githubRepo !== undefined) this.githubRepo = options.githubRepo;
+		if (options.githubToken !== undefined) this.githubToken = options.githubToken;
+		if (options.githubBranch !== undefined) this.githubBranch = options.githubBranch;
 	}
 
 	isFileInSyncPaths(file: TFile): boolean {
@@ -55,6 +115,34 @@ export class PublishStatusChecker {
 		});
 	}
 
+	async getPublishId(file: TFile): Promise<string | null> {
+		const cache = this.app.metadataCache.getFileCache(file);
+		if (cache?.frontmatter?.publishId) {
+			return String(cache.frontmatter.publishId);
+		}
+		const content = await this.app.vault.read(file);
+		return extractPublishIdFromContent(content);
+	}
+
+	async ensurePublishId(file: TFile): Promise<string> {
+		const existing = await this.getPublishId(file);
+		if (existing) return existing;
+
+		const newId = generatePublishId();
+		const content = await this.app.vault.read(file);
+		const updated = setPublishIdInContent(content, newId);
+		await this.app.vault.modify(file, updated);
+		this.logger?.info(TAG, `已为 ${file.path} 生成 publishId: ${newId}`);
+		return newId;
+	}
+
+	async setPublishId(file: TFile, publishId: string): Promise<void> {
+		const content = await this.app.vault.read(file);
+		const updated = setPublishIdInContent(content, publishId);
+		await this.app.vault.modify(file, updated);
+		this.logger?.info(TAG, `已为 ${file.path} 设置 publishId: ${publishId}`);
+	}
+
 	static normalizeSyncPath(p: string): string {
 		return p.replace(/^\/+/, '').replace(/\/+$/, '');
 	}
@@ -64,16 +152,20 @@ export class PublishStatusChecker {
 	}
 
 	async checkFileStatus(file: TFile): Promise<FilePublishInfo> {
-		const vuepressPath = this.resolveVuePressPath(file);
+		const filePath = this.resolveFilePath(file);
+		const urlPath = this.resolveUrlPath(file);
+		const displayPath = urlPath || filePath;
+		const publishId = await this.getPublishId(file);
 		const localStatus = Platform.isDesktop
-			? await this.checkLocalStatus(file, vuepressPath)
+			? await this.checkLocalStatus(file, filePath, publishId)
 			: 'unpublished' as PublishStatus;
-		const siteStatus = await this.checkSiteStatus(file, vuepressPath);
+		const siteStatus = await this.checkSiteStatus(file, publishId);
 
 		return {
 			filePath: file.path,
 			fileName: file.name,
-			vuepressPath,
+			vuepressPath: displayPath,
+			publishId,
 			localStatus,
 			siteStatus,
 			localMtime: file.stat.mtime,
@@ -92,6 +184,7 @@ export class PublishStatusChecker {
 					filePath: file.path,
 					fileName: file.name,
 					vuepressPath: null,
+					publishId: null,
 					localStatus: 'unpublished',
 					siteStatus: 'unpublished',
 					localMtime: file.stat.mtime,
@@ -103,24 +196,75 @@ export class PublishStatusChecker {
 	}
 
 	private resolveVuePressPath(file: TFile): string | null {
-		if (this.pathMapEntries.length > 0) {
-			const entry = this.pathMapEntries.find(e => e.sourceRelPath === file.path);
-			if (entry) return entry.vuepressPath;
-		}
+		return this.resolveUrlPath(file) || this.resolveFilePath(file);
+	}
+
+	private resolveFilePath(file: TFile): string | null {
 		if (this.publishRootPath) {
 			return `${this.vuepressDocsDir}/${this.publishRootPath}/${file.path}`;
 		}
 		return `${this.vuepressDocsDir}/${file.path}`;
 	}
 
-	private async checkLocalStatus(file: TFile, vuepressPath: string | null): Promise<PublishStatus> {
-		if (!this.localVuePressRoot || !vuepressPath) return 'unpublished';
+	private resolveSourceRelPath(file: TFile): string {
+		if (this.publishRootPath) {
+			return `${this.publishRootPath}/${file.path}`;
+		}
+		return file.path;
+	}
+
+	private resolveUrlPath(file: TFile): string | null {
+		if (this.pathMapEntries.length > 0) {
+			const lookupPaths = [file.path];
+			if (this.publishRootPath) {
+				lookupPaths.push(`${this.publishRootPath}/${file.path}`);
+			}
+			for (const lookup of lookupPaths) {
+				const entry = this.pathMapEntries.find(e => e.sourceRelPath === lookup);
+				if (entry) return entry.vuepressPath;
+			}
+		}
+		return null;
+	}
+
+	async touchPublishedFile(file: TFile): Promise<void> {
+		if (!Platform.isDesktop || !this.localVuePressRoot) return;
+
+		const filePath = this.resolveFilePath(file);
+		if (!filePath) return;
 
 		try {
-			const { existsSync, statSync } = require('fs') as typeof import('fs');
+			const { existsSync, utimesSync } = require('fs') as typeof import('fs');
 			const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
-			const targetPath = `${this.localVuePressRoot}${sep}${vuepressPath.replace(/\//g, sep)}`;
+			const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
 
+			if (existsSync(targetPath)) {
+				const now = new Date();
+				utimesSync(targetPath, now, now);
+				this.logger?.debug(TAG, `更新发布文件时间戳: ${targetPath}`);
+			}
+		} catch {}
+	}
+
+	private async checkLocalStatus(file: TFile, filePath: string | null, publishId: string | null): Promise<PublishStatus> {
+		if (!this.localVuePressRoot) return 'unpublished';
+
+		try {
+			const { existsSync, statSync, readFileSync } = require('fs') as typeof import('fs');
+			const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
+
+			if (publishId) {
+				const matchedPath = await this.findLocalFileByPublishId(publishId, sep);
+				if (matchedPath) {
+					const targetStat = statSync(matchedPath);
+					if (targetStat.mtimeMs >= file.stat.mtime) return 'published';
+					return 'outdated';
+				}
+			}
+
+			if (!filePath) return 'unpublished';
+
+			const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
 			if (!existsSync(targetPath)) return 'unpublished';
 
 			const targetStat = statSync(targetPath);
@@ -131,8 +275,58 @@ export class PublishStatusChecker {
 		}
 	}
 
-	private async checkSiteStatus(file: TFile, vuepressPath: string | null): Promise<PublishStatus> {
-		if (!this.siteDomain || !vuepressPath) return 'unpublished';
+	private async findLocalFileByPublishId(publishId: string, sep: string): Promise<string | null> {
+		try {
+			const { existsSync, readFileSync, readdirSync, statSync } = require('fs') as typeof import('fs');
+			const path = require('path') as typeof import('path');
+
+			const searchDirs = [this.publishRootPath, ''].filter(Boolean);
+			for (const subDir of searchDirs) {
+				const dirPath = subDir
+					? `${this.localVuePressRoot}${sep}${this.vuepressDocsDir}${sep}${subDir.replace(/\//g, sep)}`
+					: `${this.localVuePressRoot}${sep}${this.vuepressDocsDir}`;
+
+				if (!existsSync(dirPath)) continue;
+
+				const result = this.searchDirForPublishId(dirPath, publishId, sep, path, existsSync, readFileSync, statSync, readdirSync);
+				if (result) return result;
+			}
+		} catch {}
+		return null;
+	}
+
+	private searchDirForPublishId(
+		dirPath: string, publishId: string, sep: string,
+		pathMod: typeof import('path'),
+		existsSync: typeof import('fs').existsSync,
+		readFileSync: typeof import('fs').readFileSync,
+		statSync: typeof import('fs').statSync,
+		readdirSync: typeof import('fs').readdirSync,
+		depth: number = 0
+	): string | null {
+		if (depth > 10) return null;
+		try {
+			const entries = readdirSync(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (entry.name.startsWith('.')) continue;
+				const fullPath = pathMod.join(dirPath, entry.name);
+				if (entry.isDirectory()) {
+					const result = this.searchDirForPublishId(fullPath, publishId, sep, pathMod, existsSync, readFileSync, statSync, readdirSync, depth + 1);
+					if (result) return result;
+				} else if (entry.name.endsWith('.md')) {
+					try {
+						const content = readFileSync(fullPath, 'utf-8');
+						const id = extractPublishIdFromContent(content);
+						if (id === publishId) return fullPath;
+					} catch {}
+				}
+			}
+		} catch {}
+		return null;
+	}
+
+	private async checkSiteStatus(file: TFile, publishId: string | null): Promise<PublishStatus> {
+		if (!this.siteDomain) return 'unpublished';
 
 		try {
 			const domain = this.siteDomain.replace(/\/+$/, '');
@@ -146,8 +340,27 @@ export class PublishStatusChecker {
 
 			if (res.status !== 200 || !res.json) return 'unpublished';
 
-			const statusMap = res.json as Record<string, { mtime: number }>;
-			const entry = statusMap[vuepressPath];
+			const data = res.json as {
+				entries?: Record<string, { mtime: number; hash?: string; publishId?: string }>;
+				publishIdIndex?: Record<string, string>;
+			};
+			const statusMap = data.entries || (data as unknown as Record<string, { mtime: number; hash?: string; publishId?: string }>);
+			if (!statusMap || typeof statusMap !== 'object') return 'unpublished';
+
+			let entry: { mtime: number; hash?: string; publishId?: string } | undefined;
+
+			if (publishId && data.publishIdIndex) {
+				const matchedPath = data.publishIdIndex[publishId];
+				if (matchedPath) {
+					entry = statusMap[matchedPath];
+				}
+			}
+
+			if (!entry) {
+				const sourceRelPath = this.resolveSourceRelPath(file);
+				entry = statusMap[sourceRelPath];
+			}
+
 			if (!entry) return 'unpublished';
 
 			if (entry.mtime >= file.stat.mtime) return 'published';
@@ -162,12 +375,20 @@ export class PublishStatusChecker {
 			throw new Error('本地发布仅支持桌面端且已配置本地 VuePress 项目路径');
 		}
 
-		const vuepressPath = this.resolveVuePressPath(file);
-		if (!vuepressPath) throw new Error('无法解析 VuePress 路径');
+		const filePath = this.resolveFilePath(file);
+		if (!filePath) throw new Error('无法解析文件路径');
 
-		const content = await this.app.vault.read(file);
+		let content = await this.app.vault.read(file);
+		const existingId = extractPublishIdFromContent(content);
+		if (!existingId) {
+			const newId = generatePublishId();
+			content = setPublishIdInContent(content, newId);
+			await this.app.vault.modify(file, content);
+			this.logger?.info(TAG, `已为 ${file.path} 生成 publishId: ${newId}`);
+		}
+
 		const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
-		const targetPath = `${this.localVuePressRoot}${sep}${vuepressPath.replace(/\//g, sep)}`;
+		const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
 
 		try {
 			const { writeFileSync, mkdirSync, existsSync } = require('fs') as typeof import('fs');
@@ -198,15 +419,72 @@ export class PublishStatusChecker {
 		return { success, failed };
 	}
 
+	async publishMultipleToLocalWithModifier(
+		files: TFile[],
+		modifier: (file: TFile, content: string) => string
+	): Promise<{ success: number; failed: number }> {
+		let success = 0;
+		let failed = 0;
+		for (const file of files) {
+			try {
+				await this.publishToLocalWithModifier(file, modifier);
+				success++;
+			} catch {
+				failed++;
+			}
+		}
+		return { success, failed };
+	}
+
+	async publishToLocalWithModifier(
+		file: TFile,
+		modifier: (file: TFile, content: string) => string
+	): Promise<boolean> {
+		if (!Platform.isDesktop || !this.localVuePressRoot) {
+			throw new Error('本地发布仅支持桌面端且已配置本地 VuePress 项目路径');
+		}
+
+		const filePath = this.resolveFilePath(file);
+		if (!filePath) throw new Error('无法解析文件路径');
+
+		let content = await this.app.vault.read(file);
+		const existingId = extractPublishIdFromContent(content);
+		if (!existingId) {
+			const newId = generatePublishId();
+			content = setPublishIdInContent(content, newId);
+			await this.app.vault.modify(file, content);
+			this.logger?.info(TAG, `已为 ${file.path} 生成 publishId: ${newId}`);
+		}
+
+		content = modifier(file, content);
+
+		const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
+		const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
+
+		try {
+			const { writeFileSync, mkdirSync, existsSync } = require('fs') as typeof import('fs');
+			const dir = targetPath.substring(0, targetPath.lastIndexOf(sep));
+			if (!existsSync(dir)) {
+				mkdirSync(dir, { recursive: true });
+			}
+			writeFileSync(targetPath, content, 'utf-8');
+			this.logger?.info(TAG, `本地发布成功: ${targetPath}`);
+			return true;
+		} catch (e) {
+			this.logger?.error(TAG, `本地发布失败: ${targetPath}`, e.message);
+			throw e;
+		}
+	}
+
 	async getPublishedContent(file: TFile): Promise<string | null> {
 		if (!Platform.isDesktop || !this.localVuePressRoot) return null;
-		const vuepressPath = this.resolveVuePressPath(file);
-		if (!vuepressPath) return null;
+		const filePath = this.resolveFilePath(file);
+		if (!filePath) return null;
 
 		try {
 			const { existsSync, readFileSync } = require('fs') as typeof import('fs');
 			const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
-			const targetPath = `${this.localVuePressRoot}${sep}${vuepressPath.replace(/\//g, sep)}`;
+			const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
 			if (!existsSync(targetPath)) return null;
 			return readFileSync(targetPath, 'utf-8');
 		} catch {
@@ -215,13 +493,55 @@ export class PublishStatusChecker {
 	}
 
 	async getSitePublishedContent(file: TFile): Promise<string | null> {
+		const filePath = this.resolveFilePath(file);
+		const urlPath = this.resolveUrlPath(file);
+
+		if (this.githubRepo && this.githubToken && filePath) {
+			const content = await this.getGitHubPublishedContent(filePath);
+			if (content !== null) return content;
+		}
+
+		if (this.siteDomain && urlPath) {
+			const content = await this.getHtmlPublishedContent(urlPath);
+			if (content !== null) return content;
+		}
+
+		return null;
+	}
+
+	private async getGitHubPublishedContent(filePath: string): Promise<string | null> {
+		if (!this.githubRepo || !this.githubToken) return null;
+
+		const branch = this.githubBranch || 'main';
+
+		try {
+			const url = `https://api.github.com/repos/${this.githubRepo}/contents/${filePath}?ref=${branch}`;
+			const res = await requestUrl({
+				url,
+				headers: {
+					Authorization: `Bearer ${this.githubToken}`,
+					Accept: 'application/vnd.github.v3.raw',
+				},
+				throw: false,
+			});
+
+			if (res.status === 200 && res.text) {
+				this.logger?.debug(TAG, `从 GitHub 获取已发布内容: ${filePath}`);
+				return res.text;
+			}
+		} catch (e) {
+			this.logger?.warn(TAG, `GitHub 获取已发布内容失败: ${filePath}`, e.message);
+		}
+
+		return null;
+	}
+
+	private async getHtmlPublishedContent(urlPath: string): Promise<string | null> {
 		if (!this.siteDomain) return null;
-		const vuepressPath = this.resolveVuePressPath(file);
-		if (!vuepressPath) return null;
 
 		try {
 			const domain = this.siteDomain.replace(/\/+$/, '');
-			const contentUrl = `${domain}/${vuepressPath.replace(/\.md$/, '.html')}`;
+			const contentUrl = `${domain}${urlPath}`;
 
 			const res = await requestUrl({
 				url: contentUrl,
@@ -231,7 +551,11 @@ export class PublishStatusChecker {
 
 			if (res.status !== 200 || !res.text) return null;
 
-			return this.extractMarkdownFromHtml(res.text);
+			const content = this.extractMarkdownFromHtml(res.text);
+			if (content) {
+				this.logger?.debug(TAG, `从站点 HTML 获取已发布内容: ${urlPath}`);
+			}
+			return content;
 		} catch {
 			return null;
 		}

@@ -67,6 +67,10 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.githubToken = value;
 					await this.plugin.saveSettings();
+					this.plugin.bridgeManager.updateConfig({ githubToken: value });
+					if (this.plugin.publishStatusChecker) {
+						this.plugin.publishStatusChecker.updateConfig({ githubToken: value });
+					}
 				}));
 
 		new Setting(containerEl)
@@ -78,6 +82,10 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.githubRepo = value;
 					await this.plugin.saveSettings();
+					this.plugin.bridgeManager.updateConfig({ githubRepo: value });
+					if (this.plugin.publishStatusChecker) {
+						this.plugin.publishStatusChecker.updateConfig({ githubRepo: value });
+					}
 				}));
 
 		new Setting(containerEl)
@@ -89,6 +97,10 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.defaultBranch = value;
 					await this.plugin.saveSettings();
+					this.plugin.bridgeManager.updateConfig({ githubBranch: value });
+					if (this.plugin.publishStatusChecker) {
+						this.plugin.publishStatusChecker.updateConfig({ githubBranch: value });
+					}
 				}));
 
 		new Setting(containerEl)
@@ -109,6 +121,16 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.publishBranchPrefix)
 				.onChange(async (value) => {
 					this.plugin.settings.publishBranchPrefix = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('启动时清空任务历史')
+			.setDesc('每次启动插件时自动清空历史任务记录（默认开启）')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.clearTaskHistoryOnStartup)
+				.onChange(async (value) => {
+					this.plugin.settings.clearTaskHistoryOnStartup = value;
 					await this.plugin.saveSettings();
 				}));
 	}
@@ -155,6 +177,7 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 					if (this.plugin.publishStatusChecker) {
 						this.plugin.publishStatusChecker.updateConfig({ localVuePressRoot: value });
 					}
+					this.plugin.bridgeManager.updateConfig({ localBridgePath: this.plugin.getBridgeDistPath() });
 					this.plugin.refreshPublishPanel();
 					this.plugin.refreshDocSyncPanel();
 				}));
@@ -171,6 +194,7 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 					if (this.plugin.publishStatusChecker) {
 						this.plugin.publishStatusChecker.updateConfig({ siteDomain: value });
 					}
+					this.plugin.bridgeManager.updateConfig({ siteDomain: value });
 					this.plugin.refreshPublishPanel();
 					this.plugin.refreshDocSyncPanel();
 				}));

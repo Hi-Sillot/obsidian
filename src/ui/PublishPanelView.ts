@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, Platform } from 'obsidian';
 import type VuePressPublisherPlugin from '../main';
 import type { FilePublishInfo, PublishStatus } from '../types';
+import type { PRCheckResult, PRCheckStatus, PRState } from '../utils/PRCheckPoller';
 import { PaginationBar } from './PaginationBar';
 
 export const VIEW_TYPE_PUBLISH = 'sillot-publish';
@@ -17,6 +18,7 @@ const STATUS_LABELS: Record<PublishStatus, { text: string; icon: string; cls: st
 const PUBLISH_SEARCH_COLUMNS = [
 	{ key: 'fileName', label: '文件' },
 	{ key: 'vuepressPath', label: 'VuePress 路径' },
+	{ key: 'publishId', label: '发布ID' },
 	{ key: 'localStatus', label: '本地状态' },
 	{ key: 'siteStatus', label: '站点状态' },
 ];
@@ -27,6 +29,7 @@ export class PublishPanelView extends ItemView {
 	private filter: PublishFilter = 'all';
 	private isLoading = false;
 	private paginationBar: PaginationBar;
+	private prCheckUnsubscribe: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: VuePressPublisherPlugin) {
 		super(leaf);
@@ -44,6 +47,9 @@ export class PublishPanelView extends ItemView {
 	async onOpen() {
 		this.render();
 		await this.refreshStatus();
+		this.prCheckUnsubscribe = this.plugin.prCheckPoller.onChange(() => {
+			this.render();
+		});
 	}
 
 	async refreshStatus() {
@@ -86,6 +92,9 @@ export class PublishPanelView extends ItemView {
 		summaryEl.createEl('span', { text: `🟢${summary.published}`, cls: 'sillot-publish-summary-item' });
 		summaryEl.createEl('span', { text: `🟡${summary.outdated}`, cls: 'sillot-publish-summary-item' });
 		summaryEl.createEl('span', { text: `⚪${summary.unpublished}`, cls: 'sillot-publish-summary-item' });
+		if (summary.noId > 0) {
+			summaryEl.createEl('span', { text: `⚠️${summary.noId}无ID`, cls: 'sillot-publish-summary-item sillot-publish-summary-warning' });
+		}
 
 		const toolbar = container.createDiv({ cls: 'sillot-publish-toolbar' });
 
@@ -122,6 +131,7 @@ export class PublishPanelView extends ItemView {
 		}
 
 		this.renderTable(container, filtered);
+		this.renderPRCards(container);
 	}
 
 	private renderTable(container: HTMLElement, filtered: FilePublishInfo[]) {
@@ -131,6 +141,7 @@ export class PublishPanelView extends ItemView {
 		const headRow = thead.createEl('tr');
 		headRow.createEl('th', { text: '☑' });
 		headRow.createEl('th', { text: '文件' });
+		headRow.createEl('th', { text: '发布ID' });
 		headRow.createEl('th', { text: 'VuePress 路径' });
 		if (Platform.isDesktop) {
 			headRow.createEl('th', { text: '本地' });
@@ -153,6 +164,14 @@ export class PublishPanelView extends ItemView {
 			checkbox.checked = info.localStatus !== 'published' || info.siteStatus !== 'published';
 
 			row.createEl('td', { text: info.fileName, cls: 'sillot-publish-filename' });
+
+			const idCell = row.createEl('td', { cls: 'sillot-publish-id-cell' });
+			if (info.publishId) {
+				idCell.createEl('span', { text: info.publishId, cls: 'sillot-publish-id', attr: { title: info.publishId } });
+			} else {
+				idCell.createEl('span', { text: '⚠️无', cls: 'sillot-publish-id-missing', attr: { title: '缺少发布ID，建议发布时自动生成' } });
+			}
+
 			row.createEl('td', { text: info.vuepressPath || '-', cls: 'sillot-publish-vpath' });
 
 			if (Platform.isDesktop) {
@@ -213,14 +232,15 @@ export class PublishPanelView extends ItemView {
 	}
 
 	private getSummary() {
-		let published = 0, outdated = 0, unpublished = 0;
+		let published = 0, outdated = 0, unpublished = 0, noId = 0;
 		for (const info of this.fileList) {
 			const status = this.getWorstStatus(info.localStatus, info.siteStatus);
 			if (status === 'published') published++;
 			else if (status === 'outdated') outdated++;
 			else unpublished++;
+			if (!info.publishId) noId++;
 		}
-		return { total: this.fileList.length, published, outdated, unpublished };
+		return { total: this.fileList.length, published, outdated, unpublished, noId };
 	}
 
 	private getWorstStatus(a: PublishStatus, b: PublishStatus): PublishStatus {
@@ -243,6 +263,7 @@ export class PublishPanelView extends ItemView {
 				switch (col) {
 					case 'fileName': return info.fileName;
 					case 'vuepressPath': return info.vuepressPath || '';
+					case 'publishId': return info.publishId || '';
 					case 'localStatus': return STATUS_LABELS[info.localStatus].text;
 					case 'siteStatus': return STATUS_LABELS[info.siteStatus].text;
 					default: return '';
@@ -280,14 +301,35 @@ export class PublishPanelView extends ItemView {
 			return;
 		}
 
+		const { PermalinkConflictChecker } = await import('../sync/PermalinkConflictChecker');
+		const conflictChecker = new PermalinkConflictChecker(this.plugin.app, {
+			publishRootPath: this.plugin.settings.publishRootPath,
+			vuepressDocsDir: this.plugin.settings.vuepressDocsDir,
+			localVuePressRoot: this.plugin.settings.localVuePressRoot,
+			logger: this.plugin.logger,
+		});
+
+		const conflicts = await conflictChecker.checkConflictsForFiles(files);
+		let resolutions: Map<string, import('../sync/PermalinkConflictChecker').ConflictResolution> | null = null;
+
+		if (conflicts.length > 0) {
+			new Notice(`发现 ${conflicts.length} 个 permalink 冲突，请逐个解决`);
+			resolutions = await conflictChecker.resolveConflicts(conflicts);
+		}
+
 		if (target === 'local') {
-			await this.publishToLocal(files);
+			await this.publishToLocal(files, conflictChecker, resolutions, conflicts);
 		} else {
-			await this.publishToGitHub(files);
+			await this.publishToGitHub(files, conflictChecker, resolutions, conflicts);
 		}
 	}
 
-	private async publishToLocal(files: TFile[]) {
+	private async publishToLocal(
+		files: TFile[],
+		conflictChecker?: import('../sync/PermalinkConflictChecker').PermalinkConflictChecker,
+		resolutions?: Map<string, import('../sync/PermalinkConflictChecker').ConflictResolution> | null,
+		conflicts?: import('../sync/PermalinkConflictChecker').PermalinkConflict[]
+	) {
 		if (!Platform.isDesktop) {
 			new Notice('本地发布仅支持桌面端');
 			return;
@@ -302,19 +344,56 @@ export class PublishPanelView extends ItemView {
 		this.plugin.taskTracker.startTask(taskId, `发布 ${files.length} 个文件到本地...`);
 		const notice = new Notice(`正在发布 ${files.length} 个文件到本地...`, 0);
 		try {
-			const result = await checker.publishMultipleToLocal(files);
+			let filesToPublish = files;
+			let removePermalinkFiles = new Set<string>();
+
+			if (conflictChecker && resolutions && conflicts && conflicts.length > 0) {
+				const skipPermalinks = new Set<string>();
+				for (const conflict of conflicts) {
+					const resolution = resolutions.get(conflict.permalink);
+					if (resolution?.action === 'skip') {
+						skipPermalinks.add(conflict.permalink);
+					} else if (resolution?.action === 'remove-permalink') {
+						removePermalinkFiles.add(conflict.publishFile.path);
+					}
+				}
+				if (skipPermalinks.size > 0) {
+					filesToPublish = files.filter(f => {
+						const cache = this.plugin.app.metadataCache.getFileCache(f);
+						const permalink = cache?.frontmatter?.permalink ? String(cache.frontmatter.permalink) : null;
+						return !permalink || !skipPermalinks.has(permalink);
+					});
+				}
+				if (filesToPublish.length === 0) {
+					notice.hide();
+					new Notice('所有文件因 permalink 冲突被跳过');
+					return;
+				}
+			}
+
+			const result = await checker.publishMultipleToLocalWithModifier(filesToPublish, (file, content) => {
+				if (removePermalinkFiles.has(file.path)) {
+					return this.stripPermalinkFromContent(content);
+				}
+				return content;
+			});
 			notice.hide();
 			new Notice(`本地发布完成：成功 ${result.success}，失败 ${result.failed}`);
 			await this.refreshStatus();
+			this.plugin.taskTracker.endTask(taskId, 'success');
 		} catch (e) {
 			notice.hide();
 			new Notice(`本地发布失败：${e.message}`);
-		} finally {
-			this.plugin.taskTracker.endTask(taskId);
+			this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
 		}
 	}
 
-	private async publishToGitHub(files: TFile[]) {
+	private async publishToGitHub(
+		files: TFile[],
+		conflictChecker?: import('../sync/PermalinkConflictChecker').PermalinkConflictChecker,
+		resolutions?: Map<string, import('../sync/PermalinkConflictChecker').ConflictResolution> | null,
+		conflicts?: import('../sync/PermalinkConflictChecker').PermalinkConflict[]
+	) {
 		const { githubToken, githubRepo, defaultBranch, vuepressDocsDir, publishBranchPrefix, publishCreatePR } = this.plugin.settings;
 		if (!githubToken || !githubRepo) {
 			new Notice('请先在插件设置中配置 GitHub Token 和仓库');
@@ -356,7 +435,17 @@ export class PublishPanelView extends ItemView {
 			const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
 			const targetBranch = publishCreatePR ? `${publishBranchPrefix}${ts}` : defaultBranch;
 
-			const publishResult = await api.publishFiles(allPublishFiles, {
+			let publishFiles = allPublishFiles;
+			if (conflictChecker && resolutions && conflicts && conflicts.length > 0) {
+				publishFiles = conflictChecker.applyResolutions(allPublishFiles, resolutions, conflicts);
+				if (publishFiles.length === 0) {
+					notice.hide();
+					new Notice('所有文件因 permalink 冲突被跳过');
+					return;
+				}
+			}
+
+			const publishResult = await api.publishFiles(publishFiles, {
 				commitMessage: `Publish ${files.length} files from Obsidian`,
 				baseBranch: defaultBranch,
 				targetBranch,
@@ -368,17 +457,246 @@ export class PublishPanelView extends ItemView {
 			});
 
 			notice.hide();
-			if (publishResult.prUrl) {
-				new Notice(`已创建 PR #${publishResult.prNumber}`);
+			if (publishResult.prUrl && publishResult.prNumber) {
+				this.plugin.taskTracker.updateTask(taskId, 90, `PR #${publishResult.prNumber} 已创建，等待构建检查...`);
+				this.plugin.prCheckPoller.startPolling(
+					String(publishResult.prNumber),
+					{
+						prNumber: publishResult.prNumber,
+						branch: publishResult.branch,
+						headSha: publishResult.commitSha,
+						filePath: files.map(f => f.path).join(', '),
+						startedAt: Date.now(),
+					},
+					() => this.plugin.createGitHubApi(),
+				);
+				this.plugin.savePRCheckPending();
+
+				const prNumber = publishResult.prNumber;
+				const unsubscribe = this.plugin.prCheckPoller.onChange((checkResult) => {
+					if (!checkResult) return;
+					if (checkResult.prNumber !== prNumber) return;
+					if (checkResult.status === 'pending') {
+						this.plugin.taskTracker.updateTask(taskId, 92, `PR #${prNumber} 构建检查中...`);
+						return;
+					}
+					unsubscribe();
+
+					if (checkResult.status === 'success') {
+						this.plugin.taskTracker.endTask(taskId, 'success', `PR #${prNumber} 构建通过`);
+					} else if (checkResult.status === 'warning') {
+						this.plugin.taskTracker.endTask(taskId, 'success', `PR #${prNumber} 构建有警告`);
+					} else {
+						this.plugin.taskTracker.endTask(taskId, 'failed', `PR #${prNumber} 构建失败`);
+					}
+
+					const { PRCheckModal } = require('../ui/PRCheckModal');
+					const modal = new PRCheckModal(this.app, this.plugin, prNumber, checkResult.branch);
+					modal.open();
+				});
+
+				new Notice(`已创建 PR #${publishResult.prNumber}，正在等待构建检查...`);
 			} else {
 				new Notice(`已发布 ${files.length} 个文件到 GitHub`);
+				this.plugin.taskTracker.endTask(taskId, 'success');
 			}
 			await this.refreshStatus();
 		} catch (e) {
 			notice.hide();
 			new Notice(`GitHub 发布失败：${e.message}`);
-		} finally {
-			this.plugin.taskTracker.endTask(taskId);
+			this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
+		}
+	}
+
+	private stripPermalinkFromContent(content: string): string {
+		const lines = content.split(/\r?\n/);
+		if (lines[0] !== '---') return content;
+		const endIdx = lines.indexOf('---', 1);
+		if (endIdx === -1) return content;
+
+		const newLines = [];
+		for (let i = 0; i < lines.length; i++) {
+			if (i > 0 && i < endIdx && lines[i].startsWith('permalink:')) continue;
+			newLines.push(lines[i]);
+		}
+		return newLines.join('\n');
+	}
+
+	private prFilter: 'all' | 'open' | 'closed' | 'merged' = 'all';
+
+	private renderPRCards(container: HTMLElement) {
+		const results = this.plugin.prCheckPoller.getAllResults();
+		const pending = this.plugin.prCheckPoller.getPendingForPersistence();
+		const allPRs: { prNumber: number; branch: string; status: PRCheckStatus; result?: PRCheckResult }[] = [];
+
+		for (const info of pending) {
+			const result = results.get(String(info.prNumber));
+			allPRs.push({
+				prNumber: info.prNumber,
+				branch: info.branch,
+				status: result?.status || 'pending',
+				result: result || undefined,
+			});
+		}
+		for (const [key, result] of results) {
+			if (!allPRs.some(p => String(p.prNumber) === key)) {
+				allPRs.push({
+					prNumber: result.prNumber,
+					branch: result.branch,
+					status: result.status,
+					result,
+				});
+			}
+		}
+
+		allPRs.sort((a, b) => b.prNumber - a.prNumber);
+
+		const filtered = this.prFilter === 'all'
+			? allPRs
+			: allPRs.filter(pr => pr.result?.prState === this.prFilter);
+
+		const section = container.createDiv({ cls: 'sillot-pr-cards-section' });
+
+		const headerRow = section.createDiv({ cls: 'sillot-pr-cards-header' });
+		headerRow.createEl('h4', { text: `🔀 Pull Requests (${allPRs.length})` });
+
+		const filterSelect = headerRow.createEl('select', { cls: 'sillot-pr-cards-filter' }) as HTMLSelectElement;
+		const filterOpts: { key: 'all' | 'open' | 'closed' | 'merged'; label: string }[] = [
+			{ key: 'all', label: '全部' },
+			{ key: 'open', label: '🟢 开启' },
+			{ key: 'closed', label: '🔴 已关闭' },
+			{ key: 'merged', label: '🟣 已合并' },
+		];
+		for (const f of filterOpts) {
+			const opt = filterSelect.createEl('option', { text: f.label, attr: { value: f.key } }) as HTMLOptionElement;
+			if (f.key === this.prFilter) opt.selected = true;
+		}
+		filterSelect.onchange = () => {
+			this.prFilter = filterSelect.value as 'all' | 'open' | 'closed' | 'merged';
+			this.render();
+		};
+
+		if (filtered.length === 0) {
+			section.createDiv({ text: allPRs.length === 0 ? '暂无 PR' : '无匹配的 PR', cls: 'sillot-pr-cards-empty' });
+			return;
+		}
+
+		const list = section.createDiv({ cls: 'sillot-pr-cards-list' });
+
+		for (const pr of filtered) {
+			const card = list.createDiv({ cls: 'sillot-pr-card' });
+
+			const header = card.createDiv({ cls: 'sillot-pr-card-header' });
+			const statusConfig: Record<PRCheckStatus, { icon: string; text: string; cls: string }> = {
+				pending: { icon: '⏳', text: '构建中', cls: 'sillot-pr-card-status--pending' },
+				success: { icon: '✅', text: '通过', cls: 'sillot-pr-card-status--success' },
+				warning: { icon: '⚠️', text: '有警告', cls: 'sillot-pr-card-status--warning' },
+				failure: { icon: '❌', text: '失败', cls: 'sillot-pr-card-status--failure' },
+				timeout: { icon: '⌛', text: '超时', cls: 'sillot-pr-card-status--timeout' },
+				error: { icon: '🔌', text: '查询失败', cls: 'sillot-pr-card-status--error' },
+			};
+			const sc = statusConfig[pr.status];
+			header.createEl('span', { text: `${sc.icon} ${sc.text}`, cls: `sillot-pr-card-status ${sc.cls}` });
+
+			const prStateConfig: Record<PRState, { icon: string; text: string; cls: string }> = {
+				open: { icon: '🟢', text: '开启', cls: 'sillot-pr-card-prstate--open' },
+				closed: { icon: '🔴', text: '已关闭', cls: 'sillot-pr-card-prstate--closed' },
+				merged: { icon: '🟣', text: '已合并', cls: 'sillot-pr-card-prstate--merged' },
+			};
+			if (pr.result?.prState) {
+				const pc = prStateConfig[pr.result.prState];
+				header.createEl('span', { text: `${pc.icon} ${pc.text}`, cls: `sillot-pr-card-prstate ${pc.cls}` });
+			}
+
+			header.createEl('span', { text: `PR #${pr.prNumber}`, cls: 'sillot-pr-card-number' });
+
+			const removeBtn = header.createEl('button', { text: '✕', cls: 'sillot-pr-card-remove-btn', attr: { title: '移除记录' } });
+			removeBtn.onclick = (e) => {
+				e.stopPropagation();
+				this.plugin.prCheckPoller.removeResult(String(pr.prNumber));
+				this.plugin.savePRCheckPending();
+				this.render();
+			};
+
+			const body = card.createDiv({ cls: 'sillot-pr-card-body' });
+			body.createEl('span', { text: `🌿 ${pr.branch}`, cls: 'sillot-pr-card-branch' });
+
+			if (pr.result && pr.result.checkRuns.length > 0) {
+				const runs = body.createDiv({ cls: 'sillot-pr-card-runs' });
+				for (const run of pr.result.checkRuns) {
+					const runIcon = run.conclusion === 'success' ? '✅' : run.conclusion === 'failure' ? '❌' : run.status === 'completed' ? '⚪' : '⏳';
+					const runEl = runs.createDiv({ cls: 'sillot-pr-card-run' });
+					runEl.createSpan({ text: runIcon, cls: 'sillot-pr-card-run-icon' });
+					runEl.createSpan({ text: run.name, cls: 'sillot-pr-card-run-name' });
+					if (run.detailsUrl) {
+						const link = runEl.createEl('a', { text: '详情', cls: 'sillot-pr-card-run-link' });
+						link.href = run.detailsUrl;
+						link.target = '_blank';
+					}
+				}
+			}
+
+			const actions = card.createDiv({ cls: 'sillot-pr-card-actions' });
+			actions.createEl('button', { text: '🔗 查看', cls: 'sillot-pr-card-btn' }).onclick = () => {
+				const repo = this.plugin.settings.githubRepo;
+				window.open(`https://github.com/${repo}/pull/${pr.prNumber}`, '_blank');
+			};
+
+			if ((pr.status === 'success' || pr.status === 'warning') && pr.result?.prState === 'open') {
+				actions.createEl('button', { text: '🔀 合并', cls: 'sillot-pr-card-btn sillot-pr-card-btn--cta' }).onclick = async () => {
+					await this.mergePR(pr.prNumber);
+				};
+			}
+
+			if (pr.status === 'failure' || pr.status === 'timeout' || pr.status === 'error') {
+				actions.createEl('button', { text: '🔄 重新检查', cls: 'sillot-pr-card-btn sillot-pr-card-btn--cta' }).onclick = () => {
+					this.plugin.prCheckPoller.startPolling(
+						String(pr.prNumber),
+						{
+							prNumber: pr.prNumber,
+							branch: pr.branch,
+							headSha: pr.result?.headSha || '',
+							filePath: '',
+							startedAt: Date.now(),
+						},
+						() => this.plugin.createGitHubApi(),
+					);
+					new Notice('已开始重新检查 PR #' + pr.prNumber);
+				};
+			}
+
+			if (pr.status !== 'pending') {
+				actions.createEl('button', { text: '📋 详情', cls: 'sillot-pr-card-btn' }).onclick = () => {
+					const { PRCheckModal } = require('../ui/PRCheckModal');
+					const modal = new PRCheckModal(this.app, this.plugin, pr.prNumber, pr.branch);
+					modal.open();
+				};
+			}
+		}
+	}
+
+	private async mergePR(prNumber: number) {
+		const api = this.plugin.createGitHubApi();
+		if (!api) {
+			new Notice('GitHub API 未配置');
+			return;
+		}
+
+		const notice = new Notice(`正在合并 PR #${prNumber}...`, 0);
+		try {
+			await api.mergePullRequest(prNumber, {
+				commitTitle: `Merge PR #${prNumber}`,
+				mergeMethod: 'merge',
+			});
+			notice.hide();
+			new Notice(`PR #${prNumber} 已合并`);
+			this.plugin.prCheckPoller.stopPolling(String(prNumber));
+			this.plugin.prCheckPoller.updatePRState(String(prNumber), 'merged');
+			await this.plugin.savePRCheckPending();
+			await this.refreshStatus();
+		} catch (e: any) {
+			notice.hide();
+			new Notice(`合并 PR 失败：${e.message}`);
 		}
 	}
 
@@ -432,11 +750,11 @@ export class PublishPanelView extends ItemView {
 
 			notice.hide();
 			new Notice(`已打包 ${files.length} 个文件`);
+			this.plugin.taskTracker.endTask(taskId, 'success');
 		} catch (e) {
 			notice.hide();
 			new Notice(`打包失败：${e.message}`);
-		} finally {
-			this.plugin.taskTracker.endTask(taskId);
+			this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
 		}
 	}
 
@@ -466,6 +784,10 @@ export class PublishPanelView extends ItemView {
 	}
 
 	async onClose() {
+		if (this.prCheckUnsubscribe) {
+			this.prCheckUnsubscribe();
+			this.prCheckUnsubscribe = null;
+		}
 		this.contentEl.empty();
 	}
 }

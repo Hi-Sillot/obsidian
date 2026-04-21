@@ -220,6 +220,75 @@ export class GitHubApi {
 		});
 	}
 
+	async getCheckRuns(ref: string): Promise<any[]> {
+		const data = await this.request({
+			url: this.ghUrl(`/commits/${ref}/check-runs`),
+			headers: this.defaultHeaders(),
+		});
+		return data.check_runs || [];
+	}
+
+	async mergePullRequest(prNumber: number, options?: { commitTitle?: string; commitMessage?: string; mergeMethod?: string }): Promise<any> {
+		return this.request({
+			url: this.ghUrl(`/pulls/${prNumber}/merge`),
+			method: 'PUT',
+			headers: this.defaultHeaders(),
+			body: JSON.stringify({
+				commit_title: options?.commitTitle,
+				commit_message: options?.commitMessage,
+				merge_method: options?.mergeMethod || 'merge',
+			}),
+		});
+	}
+
+	async closePullRequest(prNumber: number): Promise<any> {
+		return this.request({
+			url: this.ghUrl(`/pulls/${prNumber}`),
+			method: 'PATCH',
+			headers: this.defaultHeaders(),
+			body: JSON.stringify({ state: 'closed' }),
+		});
+	}
+
+	async deleteBranch(branch: string): Promise<void> {
+		try {
+			await this.request({
+				url: this.ghUrl(`/git/refs/heads/${branch}`),
+				method: 'DELETE',
+				headers: this.defaultHeaders(),
+			});
+		} catch (e: any) {
+			if (e?.status === 422) {
+				return;
+			}
+			throw e;
+		}
+	}
+
+	async getPRComments(prNumber: number): Promise<any[]> {
+		const data = await this.request({
+			url: this.ghUrl(`/issues/${prNumber}/comments`),
+			headers: this.defaultHeaders(),
+		});
+		return Array.isArray(data) ? data : [];
+	}
+
+	async getPRReviews(prNumber: number): Promise<any[]> {
+		const data = await this.request({
+			url: this.ghUrl(`/pulls/${prNumber}/reviews`),
+			headers: this.defaultHeaders(),
+		});
+		return Array.isArray(data) ? data : [];
+	}
+
+	async getPRState(prNumber: number): Promise<{ state: string; merged: boolean }> {
+		const data = await this.request({
+			url: this.ghUrl(`/pulls/${prNumber}`),
+			headers: this.defaultHeaders(),
+		});
+		return { state: data?.state || 'open', merged: !!data?.merged };
+	}
+
 	async uploadBatchFromZip(zipBlob: Blob, commitMessage: string, branch: string): Promise<void> {
 		const JSZip = (await import('jszip')).default;
 		const zip = await JSZip.loadAsync(zipBlob);

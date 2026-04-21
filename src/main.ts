@@ -24,6 +24,7 @@ import type { PluginSettings, PublishResult, SyncCache, SyncCacheEntry } from '.
 import { DEFAULT_SETTINGS } from './types';
 import { Logger } from './utils/Logger';
 import { TaskTracker } from './utils/TaskTracker';
+import { PRCheckPoller } from './utils/PRCheckPoller';
 
 export default class VuePressPublisherPlugin extends Plugin {
 	settings: PluginSettings;
@@ -38,21 +39,161 @@ export default class VuePressPublisherPlugin extends Plugin {
 	publishStatusChecker: PublishStatusChecker | null = null;
 	logger: Logger;
 	taskTracker: TaskTracker;
+	prCheckPoller: PRCheckPoller;
 
 	async onload() {
-		await this.loadSettings();
+		const loadData = await this.loadData() || {};
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, loadData);
+		this.syncCache = loadData.syncCache || { list: [], content: {} };
 
 		this.logger = new Logger(this.app, () => this.settings);
 		this.logger.banner(this.manifest.version);
 		this.logger.info('Plugin', '插件加载开始');
 
 		this.taskTracker = new TaskTracker();
+		this.prCheckPoller = new PRCheckPoller(this.logger);
+
+		const savedResults = loadData.prCheckResults;
+		if (Array.isArray(savedResults) && savedResults.length > 0) {
+			this.prCheckPoller.restoreResults(savedResults);
+		}
+		const savedPending = loadData.prCheckPending;
+		if (Array.isArray(savedPending) && savedPending.length > 0) {
+			this.prCheckPoller.restoreFromData(savedPending, () => this.createGitHubApi());
+		}
+		this.prCheckPoller.onChange(() => this.savePRCheckPending());
+
+		const statusBarItem = this.addStatusBarItem();
+		statusBarItem.addClass('sillot-task-statusbar');
+		statusBarItem.style.display = 'none';
+		const statusBarIcon = statusBarItem.createSpan({ cls: 'sillot-task-statusbar-icon', text: '⏳' });
+		const statusBarCount = statusBarItem.createSpan({ cls: 'sillot-task-statusbar-count' });
+		const statusBarText = statusBarItem.createSpan({ cls: 'sillot-task-statusbar-text', text: '' });
+
+		let statusBarPopup: HTMLElement | null = null;
+		const closePopup = () => {
+			if (statusBarPopup) {
+				statusBarPopup.remove();
+				statusBarPopup = null;
+			}
+		};
+		const showTaskPopup = () => {
+			closePopup();
+			const tasks = this.taskTracker.getActiveTasks();
+			const pendingChecks = this.prCheckPoller.getPendingForPersistence();
+			const allResults = this.prCheckPoller.getAllResults();
+			const hasContent = tasks.length > 0 || pendingChecks.length > 0;
+			if (!hasContent) return;
+
+			statusBarPopup = document.body.createDiv({ cls: 'sillot-task-statusbar-popup' });
+			const rect = statusBarItem.getBoundingClientRect();
+			statusBarPopup.style.position = 'fixed';
+			statusBarPopup.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+			statusBarPopup.style.right = `${window.innerWidth - rect.right}px`;
+
+			const header = statusBarPopup.createDiv({ cls: 'sillot-task-statusbar-popup-header' });
+			const headerParts: string[] = [];
+			if (tasks.length > 0) headerParts.push(`${tasks.length} 任务`);
+			if (pendingChecks.length > 0) headerParts.push(`${pendingChecks.length} PR检查`);
+			header.createSpan({ text: headerParts.join(' · ') });
+			const closeBtn = header.createEl('button', { text: '✕', cls: 'sillot-task-statusbar-popup-close' });
+			closeBtn.onclick = (e) => { e.stopPropagation(); closePopup(); };
+
+			for (const t of tasks) {
+				const row = statusBarPopup.createDiv({ cls: 'sillot-task-statusbar-popup-row' });
+				const bar = row.createDiv({ cls: 'sillot-task-statusbar-popup-bar' });
+				const fill = bar.createDiv({ cls: 'sillot-task-statusbar-popup-fill' });
+				if (t.progress < 0) {
+					bar.addClass('sillot-task-statusbar-popup-bar--indeterminate');
+				} else {
+					fill.style.width = `${Math.max(0, Math.min(100, t.progress))}%`;
+				}
+				row.createDiv({ cls: 'sillot-task-statusbar-popup-label', text: t.label }).title = t.label;
+			}
+
+			for (const info of pendingChecks) {
+				const result = allResults.get(String(info.prNumber));
+				const status = result?.status || 'pending';
+				const icon = status === 'pending' ? '⏳' : status === 'success' ? '✅' : status === 'warning' ? '⚠️' : status === 'failure' ? '❌' : '🔌';
+				const row = statusBarPopup.createDiv({ cls: 'sillot-task-statusbar-popup-row sillot-task-statusbar-popup-prcheck' });
+				row.createSpan({ text: icon, cls: 'sillot-task-statusbar-popup-prcheck-icon' });
+				const label = row.createDiv({ cls: 'sillot-task-statusbar-popup-label', text: `PR #${info.prNumber} ${status === 'pending' ? '构建检查中...' : '检查完成'}` });
+				label.title = `分支: ${info.branch}`;
+
+				if (status !== 'pending') {
+					row.addClass('sillot-task-statusbar-popup-prcheck--done');
+					row.onclick = () => {
+						closePopup();
+						const { PRCheckModal } = require('./ui/PRCheckModal');
+						const modal = new PRCheckModal(this.app, this, info.prNumber, info.branch);
+						modal.open();
+					};
+				}
+			}
+
+			const onClickOutside = (e: MouseEvent) => {
+				if (statusBarPopup && !statusBarPopup.contains(e.target as Node) && e.target !== statusBarItem) {
+					closePopup();
+					document.removeEventListener('click', onClickOutside);
+				}
+			};
+			setTimeout(() => document.addEventListener('click', onClickOutside), 0);
+		};
+
+		statusBarItem.onclick = () => {
+			if (statusBarPopup) {
+				closePopup();
+			} else {
+				showTaskPopup();
+			}
+		};
+
+		const updateStatusBar = () => {
+			const tasks = this.taskTracker.getActiveTasks();
+			const pendingChecks = this.prCheckPoller.getPendingForPersistence();
+			const hasActive = tasks.length > 0 || pendingChecks.length > 0;
+			if (!hasActive) {
+				statusBarItem.style.display = 'none';
+				closePopup();
+			} else {
+				statusBarItem.style.display = '';
+				const parts: string[] = [];
+				if (tasks.length > 0) {
+					const latest = tasks[tasks.length - 1];
+					parts.push(latest.label);
+				}
+				if (pendingChecks.length > 0) {
+					parts.push(`${pendingChecks.length}个PR检查中`);
+				}
+				statusBarText.textContent = parts.join(' · ');
+				if (tasks.length > 1 || pendingChecks.length > 0) {
+					statusBarCount.textContent = `${tasks.length + pendingChecks.length}`;
+					statusBarCount.style.display = 'inline';
+				} else {
+					statusBarCount.style.display = 'none';
+				}
+				statusBarItem.title = [
+					...tasks.map(t => t.label),
+					...pendingChecks.map(p => `PR #${p.prNumber} 构建检查中`),
+				].join('\n');
+				if (statusBarPopup) showTaskPopup();
+			}
+		};
+		this.taskTracker.onChange(updateStatusBar);
+		this.prCheckPoller.onChange(() => updateStatusBar());
+
+		if (this.settings.clearTaskHistoryOnStartup) {
+			this.taskTracker.clearHistory();
+		}
 		this.styleInjector = new StyleInjector();
 		this.bridgeCssInjector = new BridgeCssInjector();
 		this.bridgeManager = new BridgeManager({
 			app: this.app,
 			localBridgePath: this.getBridgeDistPath(),
 			siteDomain: this.settings.siteDomain,
+			githubRepo: this.settings.githubRepo,
+			githubToken: this.settings.githubToken,
+			githubBranch: this.settings.defaultBranch,
 			onAssetsLoaded: (assets) => this.onBridgeAssetsLoaded(assets),
 			logger: this.logger,
 		});
@@ -61,8 +202,10 @@ export default class VuePressPublisherPlugin extends Plugin {
 
 		this.initSyncManager();
 
-		await this.loadVuePressStyles();
-		await this.syncBridgeAssets();
+		await Promise.all([
+			this.loadVuePressStyles(),
+			this.initBridgeAssets(),
+		]);
 
 		this.logger.info('Plugin', '插件加载完成');
 
@@ -236,6 +379,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 
 	onunload() {
 		this.logger.info('Plugin', '插件卸载');
+		this.prCheckPoller.stopAll();
 		this.logger.flush();
 		this.styleInjector.remove();
 		this.bridgeCssInjector.remove();
@@ -289,6 +433,23 @@ export default class VuePressPublisherPlugin extends Plugin {
 		}
 	}
 
+	async initBridgeAssets() {
+		const cacheLoaded = await this.bridgeManager.loadFromCache();
+		if (cacheLoaded) {
+			this.onBridgeAssetsLoaded(this.bridgeManager.getAssets());
+			this.logger.info('Bridge', '从缓存恢复 Bridge 产物');
+		}
+
+		this.bridgeManager.sync().then((assets) => {
+			this.onBridgeAssetsLoaded(assets);
+			this.logger.info('Bridge', 'Bridge 产物同步成功');
+		}).catch((e) => {
+			if (!cacheLoaded) {
+				this.logger.warn('Bridge', 'Bridge 产物同步失败（非致命）', e.message);
+			}
+		});
+	}
+
 	onBridgeAssetsLoaded(assets: any) {
 		if (assets.bridgeCss) {
 			this.bridgeCssInjector.loadFromText(assets.bridgeCss);
@@ -331,6 +492,9 @@ export default class VuePressPublisherPlugin extends Plugin {
 			vuepressDocsDir: this.settings.vuepressDocsDir,
 			publishRootPath: this.settings.publishRootPath,
 			vaultSyncPaths: this.settings.vaultSyncPaths,
+			githubRepo: this.settings.githubRepo,
+			githubToken: this.settings.githubToken,
+			githubBranch: this.settings.defaultBranch,
 			logger: this.logger,
 		});
 
@@ -514,12 +678,50 @@ export default class VuePressPublisherPlugin extends Plugin {
 				}
 
 				notice.hide();
-				if (publishResult.prUrl) {
-					new Notice(`已创建 PR #${publishResult.prNumber}`, 0);
+				if (publishResult.prUrl && publishResult.prNumber) {
 					this.logger.info('Publish', `发布成功: ${file.path}`, `branch=${result.branch}, PR=${publishResult.prUrl}`);
+					this.taskTracker.updateTask(taskId, 90, `PR #${publishResult.prNumber} 已创建，等待构建检查...`);
+					this.prCheckPoller.startPolling(
+						String(publishResult.prNumber),
+						{
+							prNumber: publishResult.prNumber,
+							branch: publishResult.branch,
+							headSha: publishResult.commitSha,
+							filePath: file.path,
+							startedAt: Date.now(),
+						},
+						() => this.createGitHubApi(),
+					);
+					this.savePRCheckPending();
+
+					const prNumber = publishResult.prNumber;
+					const unsubscribe = this.prCheckPoller.onChange((checkResult) => {
+						if (!checkResult) return;
+						if (checkResult.prNumber !== prNumber) return;
+						if (checkResult.status === 'pending') {
+							this.taskTracker.updateTask(taskId, 92, `PR #${prNumber} 构建检查中...`);
+							return;
+						}
+						unsubscribe();
+
+						if (checkResult.status === 'success') {
+							this.taskTracker.endTask(taskId, 'success', `PR #${prNumber} 构建通过`);
+						} else if (checkResult.status === 'warning') {
+							this.taskTracker.endTask(taskId, 'success', `PR #${prNumber} 构建有警告`);
+						} else {
+							this.taskTracker.endTask(taskId, 'failed', `PR #${prNumber} 构建失败`);
+						}
+
+						const { PRCheckModal } = require('./ui/PRCheckModal');
+						const modal = new PRCheckModal(this.app, this, prNumber, checkResult.branch);
+						modal.open();
+					});
+
+					new Notice(`已创建 PR #${publishResult.prNumber}，正在等待构建检查...`);
 				} else {
 					new Notice('已发布！GitHub Actions 将自动构建站点。');
 					this.logger.info('Publish', `发布成功: ${file.path}`, `branch=${result.branch}, commit=${publishResult.commitSha}`);
+					this.taskTracker.endTask(taskId, 'success');
 				}
 				this.ensureFileInSyncPaths(file);
 				this.cleanVaultSyncPaths();
@@ -540,8 +742,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 						});
 					} catch {}
 				}
-			} finally {
-				this.taskTracker.endTask(taskId);
+				this.taskTracker.endTask(taskId, 'failed', error.message);
 			}
 		}).open();
 	}
@@ -560,12 +761,12 @@ export default class VuePressPublisherPlugin extends Plugin {
 			notice.hide();
 			this.logger.info('Sync', `同步完成: ${file.path}`, `synced=${result.synced}, conflicts=${result.conflicts}`);
 			new Notice(`同步完成：${result.synced} 项，冲突 ${result.conflicts} 项`);
+			this.taskTracker.endTask(taskId, 'success');
 		} catch (error) {
 			notice.hide();
 			this.logger.error('Sync', `同步失败: ${file.path}`, error.message);
 			new Notice(`同步失败：${error.message}`);
-		} finally {
-			this.taskTracker.endTask(taskId);
+			this.taskTracker.endTask(taskId, 'failed', error.message);
 		}
 	}
 
@@ -589,8 +790,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 				this.taskTracker.updateTask(taskId, -1, `同步中 (${totalSynced} 项已完成)...`);
 			} catch {}
 		}
-		this.taskTracker.endTask(taskId);
-		notice.hide();
+		this.taskTracker.endTask(taskId, 'success');
 		this.logger.info('Sync', `全部同步完成`, `synced=${totalSynced}, conflicts=${totalConflicts}`);
 		new Notice(`全部同步完成：${totalSynced} 项，冲突 ${totalConflicts} 项`);
 	}
@@ -634,6 +834,18 @@ export default class VuePressPublisherPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData({ ...this.settings, syncCache: this.syncCache });
 		this.initSyncManager();
+	}
+
+	createGitHubApi(): GitHubApi | null {
+		if (!this.settings.githubToken || !this.settings.githubRepo) return null;
+		return new GitHubApi(this.settings.githubRepo, this.settings.githubToken);
+	}
+
+	async savePRCheckPending() {
+		const data = await this.loadData() || {};
+		data.prCheckPending = this.prCheckPoller.getPendingForPersistence();
+		data.prCheckResults = this.prCheckPoller.getResultsForPersistence();
+		await this.saveData(data);
 	}
 
 	updateSyncListCache(list: SyncCacheEntry[]) {

@@ -1,16 +1,30 @@
 import { requestUrl, Platform, App } from 'obsidian';
-import type { BridgeAssets, BridgeVersion, PathMapData, SyntaxDescriptorsData, ComponentPropsData, AuthorsData } from './types';
+import type { BridgeAssets, BridgeVersion, PathMapData, SyntaxDescriptorsData, ComponentPropsData, AuthorsData, PermalinkIndexData, PublishStatusData } from './types';
 import { DEFAULT_BRIDGE_ASSETS } from './types';
 import type { Logger } from '../utils/Logger';
 
 const TAG = 'Bridge';
 const CACHE_DIR = '.obsidian/plugins/sillot/bridge-cache';
 
+const BRIDGE_FILES = [
+	'version.json',
+	'path-map.json',
+	'syntax-descriptors.json',
+	'component-props.json',
+	'authors.json',
+	'bridge-vars.css',
+	'permalink-index.json',
+	'publish-status.json',
+] as const;
+
 export class BridgeManager {
 	private app: App;
 	private assets: BridgeAssets = { ...DEFAULT_BRIDGE_ASSETS };
 	private localBridgePath: string = '';
 	private siteDomain: string = '';
+	private githubRepo: string = '';
+	private githubToken: string = '';
+	private githubBranch: string = '';
 	private onAssetsLoaded?: (assets: BridgeAssets) => void;
 	private logger: Logger | null;
 	private cacheTimestamp: number = 0;
@@ -19,19 +33,34 @@ export class BridgeManager {
 		app: App;
 		localBridgePath?: string;
 		siteDomain?: string;
+		githubRepo?: string;
+		githubToken?: string;
+		githubBranch?: string;
 		onAssetsLoaded?: (assets: BridgeAssets) => void;
 		logger?: Logger;
 	}) {
 		this.app = options.app;
 		this.localBridgePath = options.localBridgePath || '';
 		this.siteDomain = options.siteDomain || '';
+		this.githubRepo = options.githubRepo || '';
+		this.githubToken = options.githubToken || '';
+		this.githubBranch = options.githubBranch || '';
 		this.onAssetsLoaded = options.onAssetsLoaded;
 		this.logger = options.logger || null;
 	}
 
-	updateConfig(localBridgePath: string, siteDomain: string) {
-		this.localBridgePath = localBridgePath;
-		this.siteDomain = siteDomain;
+	updateConfig(options: {
+		localBridgePath?: string;
+		siteDomain?: string;
+		githubRepo?: string;
+		githubToken?: string;
+		githubBranch?: string;
+	}) {
+		if (options.localBridgePath !== undefined) this.localBridgePath = options.localBridgePath;
+		if (options.siteDomain !== undefined) this.siteDomain = options.siteDomain;
+		if (options.githubRepo !== undefined) this.githubRepo = options.githubRepo;
+		if (options.githubToken !== undefined) this.githubToken = options.githubToken;
+		if (options.githubBranch !== undefined) this.githubBranch = options.githubBranch;
 	}
 
 	getAssets(): BridgeAssets {
@@ -79,6 +108,16 @@ export class BridgeManager {
 				this.assets.bridgeCss = await adapter.read(cssPath);
 			}
 
+			const permalinkIndexPath = `${CACHE_DIR}/permalink-index.json`;
+			if (await adapter.exists(permalinkIndexPath)) {
+				this.assets.permalinkIndex = JSON.parse(await adapter.read(permalinkIndexPath)) as PermalinkIndexData;
+			}
+
+			const publishStatusPath = `${CACHE_DIR}/publish-status.json`;
+			if (await adapter.exists(publishStatusPath)) {
+				this.assets.publishStatus = JSON.parse(await adapter.read(publishStatusPath)) as PublishStatusData;
+			}
+
 			const tsPath = `${CACHE_DIR}/.cache-timestamp`;
 			if (await adapter.exists(tsPath)) {
 				this.cacheTimestamp = parseInt(await adapter.read(tsPath), 10) || 0;
@@ -117,6 +156,12 @@ export class BridgeManager {
 			}
 			if (this.assets.bridgeCss) {
 				await adapter.write(`${CACHE_DIR}/bridge-vars.css`, this.assets.bridgeCss);
+			}
+			if (this.assets.permalinkIndex) {
+				await adapter.write(`${CACHE_DIR}/permalink-index.json`, JSON.stringify(this.assets.permalinkIndex, null, 2));
+			}
+			if (this.assets.publishStatus) {
+				await adapter.write(`${CACHE_DIR}/publish-status.json`, JSON.stringify(this.assets.publishStatus, null, 2));
 			}
 
 			this.cacheTimestamp = Date.now();
@@ -189,6 +234,16 @@ export class BridgeManager {
 				this.assets.bridgeCss = readFileSync(cssPath, 'utf-8');
 			}
 
+			const permalinkIndexPath = `${basePath}${sep}permalink-index.json`;
+			if (existsSync(permalinkIndexPath)) {
+				this.assets.permalinkIndex = JSON.parse(readFileSync(permalinkIndexPath, 'utf-8')) as PermalinkIndexData;
+			}
+
+			const publishStatusPath = `${basePath}${sep}publish-status.json`;
+			if (existsSync(publishStatusPath)) {
+				this.assets.publishStatus = JSON.parse(readFileSync(publishStatusPath, 'utf-8')) as PublishStatusData;
+			}
+
 			this.logger?.info(TAG, '本地 Bridge 加载成功', `v${this.assets.version?.version}, paths=${this.assets.pathMap?.entries?.length || 0}, syntaxes=${this.assets.syntaxDescriptors?.syntaxes?.length || 0}, authors=${Object.keys(this.assets.authors?.authors || {}).length}`);
 
 			await this.saveToCache();
@@ -211,35 +266,45 @@ export class BridgeManager {
 		this.logger?.info(TAG, `从站点加载 Bridge 产物: ${bridgeBase}`);
 
 		try {
-			const versionRes = await requestUrl({ url: `${bridgeBase}/version.json`, throw: false });
-			if (versionRes.status !== 200) {
-				throw new Error(`version.json 返回 HTTP ${versionRes.status}`);
+			const versionRes = await this.fetchJson<BridgeVersion>(`${bridgeBase}/version.json`);
+			if (!versionRes) {
+				throw new Error('version.json 获取失败（可能返回了 HTML 而非 JSON，请检查站点域名和部署配置）');
 			}
-			this.assets.version = versionRes.json as BridgeVersion;
+			this.assets.version = versionRes;
 
-			const pathMapRes = await requestUrl({ url: `${bridgeBase}/path-map.json`, throw: false });
-			if (pathMapRes.status === 200) {
-				this.assets.pathMap = pathMapRes.json as PathMapData;
-			}
-
-			const syntaxRes = await requestUrl({ url: `${bridgeBase}/syntax-descriptors.json`, throw: false });
-			if (syntaxRes.status === 200) {
-				this.assets.syntaxDescriptors = syntaxRes.json as SyntaxDescriptorsData;
+			const pathMapRes = await this.fetchJson<PathMapData>(`${bridgeBase}/path-map.json`);
+			if (pathMapRes) {
+				this.assets.pathMap = pathMapRes;
 			}
 
-			const componentRes = await requestUrl({ url: `${bridgeBase}/component-props.json`, throw: false });
-			if (componentRes.status === 200) {
-				this.assets.componentProps = componentRes.json as ComponentPropsData;
+			const syntaxRes = await this.fetchJson<SyntaxDescriptorsData>(`${bridgeBase}/syntax-descriptors.json`);
+			if (syntaxRes) {
+				this.assets.syntaxDescriptors = syntaxRes;
 			}
 
-			const authorsRes = await requestUrl({ url: `${bridgeBase}/authors.json`, throw: false });
-			if (authorsRes.status === 200) {
-				this.assets.authors = authorsRes.json as AuthorsData;
+			const componentRes = await this.fetchJson<ComponentPropsData>(`${bridgeBase}/component-props.json`);
+			if (componentRes) {
+				this.assets.componentProps = componentRes;
 			}
 
-			const cssRes = await requestUrl({ url: `${bridgeBase}/bridge-vars.css`, throw: false });
-			if (cssRes.status === 200) {
-				this.assets.bridgeCss = cssRes.text;
+			const authorsRes = await this.fetchJson<AuthorsData>(`${bridgeBase}/authors.json`);
+			if (authorsRes) {
+				this.assets.authors = authorsRes;
+			}
+
+			const cssRes = await this.fetchText(`${bridgeBase}/bridge-vars.css`, 'text/css');
+			if (cssRes) {
+				this.assets.bridgeCss = cssRes;
+			}
+
+			const permalinkIndexRes = await this.fetchJson<any>(`${bridgeBase}/permalink-index.json`);
+			if (permalinkIndexRes) {
+				this.assets.permalinkIndex = permalinkIndexRes;
+			}
+
+			const publishStatusRes = await this.fetchJson<PublishStatusData>(`${bridgeBase}/publish-status.json`);
+			if (publishStatusRes) {
+				this.assets.publishStatus = publishStatusRes;
 			}
 
 			this.logger?.info(TAG, '站点 Bridge 加载成功', `v${this.assets.version?.version}, paths=${this.assets.pathMap?.entries?.length || 0}, syntaxes=${this.assets.syntaxDescriptors?.syntaxes?.length || 0}, authors=${Object.keys(this.assets.authors?.authors || {}).length}`);
@@ -253,17 +318,72 @@ export class BridgeManager {
 		}
 	}
 
+	private async fetchJson<T>(url: string): Promise<T | null> {
+		try {
+			const res = await requestUrl({ url, throw: false });
+			if (res.status !== 200) return null;
+
+			const contentType = res.headers?.['content-type'] || '';
+			if (contentType.includes('text/html')) {
+				this.logger?.warn(TAG, `${url} 返回了 HTML 而非 JSON，可能是 SPA fallback`);
+				return null;
+			}
+
+			if (typeof res.json !== 'object' || res.json === null) {
+				this.logger?.warn(TAG, `${url} 响应不是有效的 JSON 对象`);
+				return null;
+			}
+
+			return res.json as T;
+		} catch (e) {
+			this.logger?.warn(TAG, `获取 ${url} 失败`, e.message);
+			return null;
+		}
+	}
+
+	private async fetchText(url: string, expectedType?: string): Promise<string | null> {
+		try {
+			const res = await requestUrl({ url, throw: false });
+			if (res.status !== 200) return null;
+
+			if (expectedType) {
+				const contentType = res.headers?.['content-type'] || '';
+				if (contentType.includes('text/html')) {
+					this.logger?.warn(TAG, `${url} 返回了 HTML 而非 ${expectedType}，可能是 SPA fallback`);
+					return null;
+				}
+			}
+
+			return res.text;
+		} catch (e) {
+			this.logger?.warn(TAG, `获取 ${url} 失败`, e.message);
+			return null;
+		}
+	}
+
 	async sync(): Promise<BridgeAssets> {
 		if (!Platform.isMobile && this.localBridgePath) {
 			try {
 				return await this.syncFromLocal();
 			} catch (e) {
-				this.logger?.warn(TAG, `本地加载失败，回退到站点加载`, e.message);
+				this.logger?.warn(TAG, `本地加载失败，回退到 GitHub 加载`, e.message);
+			}
+		}
+
+		if (this.githubRepo && this.githubToken) {
+			try {
+				return await this.syncFromGitHub();
+			} catch (e) {
+				this.logger?.warn(TAG, `GitHub 加载失败，回退到站点加载`, e.message);
 			}
 		}
 
 		if (this.siteDomain) {
-			return await this.syncFromSite();
+			try {
+				return await this.syncFromSite();
+			} catch (e) {
+				this.logger?.warn(TAG, `站点加载失败，回退到缓存`, e.message);
+			}
 		}
 
 		const loaded = await this.loadFromCache();
@@ -271,7 +391,109 @@ export class BridgeManager {
 			return this.assets;
 		}
 
-		throw new Error('未配置本地 Bridge 路径或站点域名，且无缓存');
+		throw new Error('未配置本地 Bridge 路径、GitHub 仓库或站点域名，且无缓存');
+	}
+
+	async syncFromGitHub(): Promise<BridgeAssets> {
+		if (!this.githubRepo || !this.githubToken) {
+			throw new Error('未配置 GitHub 仓库或 Token');
+		}
+
+		const branch = this.githubBranch || 'main';
+		const bridgePath = 'docs/.vuepress/dist/obsidian-bridge';
+
+		this.logger?.info(TAG, `从 GitHub 加载 Bridge 产物: ${this.githubRepo}:${branch}/${bridgePath}`);
+
+		try {
+			const versionText = await this.fetchGitHubFile(`${bridgePath}/version.json`, branch);
+			if (!versionText) {
+				throw new Error('GitHub 上未找到 version.json，可能尚未构建部署');
+			}
+			this.assets.version = JSON.parse(versionText) as BridgeVersion;
+
+			const pathMapText = await this.fetchGitHubFile(`${bridgePath}/path-map.json`, branch);
+			if (pathMapText) {
+				this.assets.pathMap = JSON.parse(pathMapText) as PathMapData;
+			}
+
+			const syntaxText = await this.fetchGitHubFile(`${bridgePath}/syntax-descriptors.json`, branch);
+			if (syntaxText) {
+				this.assets.syntaxDescriptors = JSON.parse(syntaxText) as SyntaxDescriptorsData;
+			}
+
+			const componentText = await this.fetchGitHubFile(`${bridgePath}/component-props.json`, branch);
+			if (componentText) {
+				this.assets.componentProps = JSON.parse(componentText) as ComponentPropsData;
+			}
+
+			const authorsText = await this.fetchGitHubFile(`${bridgePath}/authors.json`, branch);
+			if (authorsText) {
+				this.assets.authors = JSON.parse(authorsText) as AuthorsData;
+			}
+
+			const cssText = await this.fetchGitHubFile(`${bridgePath}/bridge-vars.css`, branch);
+			if (cssText) {
+				this.assets.bridgeCss = cssText;
+			}
+
+			const permalinkIndexText = await this.fetchGitHubFile(`${bridgePath}/permalink-index.json`, branch);
+			if (permalinkIndexText) {
+				this.assets.permalinkIndex = JSON.parse(permalinkIndexText) as PermalinkIndexData;
+			}
+
+			const publishStatusText = await this.fetchGitHubFile(`${bridgePath}/publish-status.json`, branch);
+			if (publishStatusText) {
+				this.assets.publishStatus = JSON.parse(publishStatusText) as PublishStatusData;
+			}
+
+			this.logger?.info(TAG, 'GitHub Bridge 加载成功', `v${this.assets.version?.version}, paths=${this.assets.pathMap?.entries?.length || 0}`);
+
+			await this.saveToCache();
+			this.onAssetsLoaded?.(this.assets);
+			return this.assets;
+		} catch (e) {
+			this.logger?.error(TAG, `GitHub Bridge 加载失败`, e.message);
+			throw e;
+		}
+	}
+
+	private async fetchGitHubFile(path: string, branch: string): Promise<string | null> {
+		const url = `https://api.github.com/repos/${this.githubRepo}/contents/${path}?ref=${branch}`;
+
+		for (let attempt = 0; attempt < 3; attempt++) {
+			try {
+				const res = await requestUrl({
+					url,
+					headers: {
+						Authorization: `Bearer ${this.githubToken}`,
+						Accept: 'application/vnd.github.v3.raw',
+					},
+					throw: false,
+				});
+
+				if (res.status === 200) return res.text;
+				if (res.status === 404) return null;
+				if (res.status === 401 || res.status === 403) {
+					throw new Error(`GitHub API 认证失败 (HTTP ${res.status})`);
+				}
+
+				if (attempt < 2) {
+					const delay = Math.pow(2, attempt) * 1000;
+					await new Promise(resolve => setTimeout(resolve, delay));
+				}
+			} catch (e: any) {
+				if (e?.status === 401 || e?.status === 403) throw e;
+				if (attempt < 2) {
+					const delay = Math.pow(2, attempt) * 1000;
+					await new Promise(resolve => setTimeout(resolve, delay));
+				} else {
+					this.logger?.warn(TAG, `GitHub 获取 ${path} 失败`, e.message);
+					return null;
+				}
+			}
+		}
+
+		return null;
 	}
 
 	getVuePressDirectories(): string[] {

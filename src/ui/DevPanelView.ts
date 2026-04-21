@@ -24,6 +24,11 @@ const PATHMAP_SEARCH_COLUMNS: SearchColumn[] = [
 	{ key: 'title', label: '标题' },
 ];
 
+const PUBLISH_STATUS_SEARCH_COLUMNS: SearchColumn[] = [
+	{ key: 'filePath', label: '源文件路径' },
+	{ key: 'publishId', label: '发布ID' },
+];
+
 interface LogEntry {
 	timestamp: string;
 	level: 'info' | 'warn' | 'error';
@@ -41,6 +46,7 @@ export class DevPanelView extends ItemView {
 	private cachePagination: PaginationBar;
 	private vaultPagination: PaginationBar;
 	private pathMapPagination: PaginationBar;
+	private publishStatusPagination: PaginationBar;
 
 	constructor(leaf: WorkspaceLeaf, plugin: VuePressPublisherPlugin) {
 		super(leaf);
@@ -55,6 +61,10 @@ export class DevPanelView extends ItemView {
 		});
 		this.pathMapPagination = new PaginationBar({
 			columns: PATHMAP_SEARCH_COLUMNS,
+			onChange: () => this.renderTabContent(),
+		});
+		this.publishStatusPagination = new PaginationBar({
+			columns: PUBLISH_STATUS_SEARCH_COLUMNS,
 			onChange: () => this.renderTabContent(),
 		});
 	}
@@ -384,7 +394,7 @@ export class DevPanelView extends ItemView {
 				this.addLog('info', `ksdListFiles 响应 (${elapsed}ms)`, JSON.stringify(res).slice(0, 300));
 				return res;
 			} catch (e) {
-				this.plugin.taskTracker.endTask(taskId);
+				this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
 				this.addLog('error', 'ksdListFiles 异常', e.message);
 				return null;
 			}
@@ -543,7 +553,7 @@ export class DevPanelView extends ItemView {
 				await this.renderKDocsResult(resultEl, action, res, elapsed);
 			}
 		} catch (e) {
-			this.plugin.taskTracker.endTask(taskId);
+			this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
 			this.kdocsLastResult = { action, result: { success: false, error: e.message }, elapsed: Date.now() - start };
 			this.addLog('error', `KSDrive.${action} 异常`, e.message);
 			if (resultEl) {
@@ -1405,6 +1415,57 @@ export class DevPanelView extends ItemView {
 			}
 		}
 
+		if (assets.publishStatus?.entries) {
+			const psCard = container.createDiv({ cls: 'sillot-dev-card' });
+			const rawEntries = Object.entries(assets.publishStatus.entries);
+			const withId = rawEntries.filter(([, e]) => e.publishId).length;
+			const withoutId = rawEntries.length - withId;
+			psCard.createEl('h5', { text: `发布状态 (${rawEntries.length} 条, ${withId} 有ID, ${withoutId} 无ID)` });
+
+			if (withoutId > 0) {
+				const warnEl = psCard.createDiv({ cls: 'sillot-dev-warning' });
+				warnEl.textContent = `⚠️ ${withoutId} 个文件缺少发布ID，建议发布时自动生成`;
+			}
+
+			const psItems = [...rawEntries].sort((a, b) => {
+				if (!a[1].publishId && b[1].publishId) return 1;
+				if (a[1].publishId && !b[1].publishId) return -1;
+				return 0;
+			}).map(([filePath, entry]) => ({ filePath, ...entry }));
+
+			const psState = this.publishStatusPagination.getState();
+			const psFiltered = PaginationBar.filterBySearch(
+				psItems, psState.searchQuery, psState.searchColumns,
+				(item, col) => {
+					switch (col) {
+						case 'filePath': return item.filePath;
+						case 'publishId': return item.publishId || '';
+						default: return '';
+					}
+				}
+			);
+			const { pageItems: psPageItems } = PaginationBar.paginate(psFiltered, psState.currentPage, psState.pageSize);
+
+			const psPagination = psCard.createDiv({ cls: 'sillot-dev-pagination' });
+			this.publishStatusPagination.render(psPagination, psFiltered.length);
+
+			const psTable = psCard.createEl('table', { cls: 'sillot-dev-table' });
+			const psThead = psTable.createEl('thead');
+			psThead.createEl('tr').innerHTML = '<th>源文件路径</th><th>发布ID</th><th>修改时间</th>';
+			const psTbody = psTable.createEl('tbody');
+			for (const item of psPageItems) {
+				const row = psTbody.createEl('tr');
+				row.createEl('td', { text: item.filePath });
+				const idCell = row.createEl('td');
+				if (item.publishId) {
+					idCell.createEl('span', { text: item.publishId, cls: 'sillot-dev-publish-id' });
+				} else {
+					idCell.createEl('span', { text: '⚠️无', cls: 'sillot-dev-publish-id-missing' });
+				}
+				row.createEl('td', { text: new Date(item.mtime).toLocaleString() });
+			}
+		}
+
 		if (assets.syntaxDescriptors?.syntaxes?.length) {
 			const syntaxCard = container.createDiv({ cls: 'sillot-dev-card' });
 			syntaxCard.createEl('h5', { text: `语法处理器 (${assets.syntaxDescriptors.syntaxes.length} 个)` });
@@ -1594,6 +1655,69 @@ export class DevPanelView extends ItemView {
 		scrollActions.createEl('button', { text: '⬇ 滚动到末尾', cls: 'sillot-dev-btn' }).onclick = () => {
 			logContainer.scrollTop = logContainer.scrollHeight;
 		};
+
+		this.renderTaskHistory(container);
+	}
+
+	private renderTaskHistory(container: HTMLElement) {
+		const card = container.createDiv({ cls: 'sillot-dev-card' });
+		card.createEl('h5', { text: '历史任务' });
+
+		const history = this.plugin.taskTracker.getHistory();
+		const actions = card.createDiv({ cls: 'sillot-dev-actions' });
+		actions.createEl('button', { text: '🗑️ 清空', cls: 'sillot-dev-btn sillot-dev-btn--warn' }).onclick = () => {
+			this.plugin.taskTracker.clearHistory();
+			this.render();
+		};
+
+		if (history.length === 0) {
+			card.createEl('p', { text: '暂无历史任务', cls: 'sillot-dev-hint' });
+			return;
+		}
+
+		const table = card.createEl('table', { cls: 'sillot-dev-table' });
+		const thead = table.createEl('thead');
+		thead.createEl('tr').innerHTML = '<th>任务</th><th>结果</th><th>进度</th><th>开始时间</th><th>耗时</th><th>反馈</th>';
+		const tbody = table.createEl('tbody');
+
+		for (const entry of [...history].reverse()) {
+			const row = tbody.createEl('tr');
+			row.createEl('td', { text: entry.label, cls: 'sillot-dev-task-history-label' });
+
+			const resultCell = row.createEl('td');
+			const resultCfg: Record<string, { icon: string; cls: string }> = {
+				success: { icon: '✅', cls: 'sillot-dev-task-result-success' },
+				failed: { icon: '❌', cls: 'sillot-dev-task-result-failed' },
+				cancelled: { icon: '🚫', cls: 'sillot-dev-task-result-cancelled' },
+			};
+			const cfg = resultCfg[entry.result] || resultCfg.cancelled;
+			resultCell.createEl('span', { text: `${cfg.icon} ${entry.result}`, cls: cfg.cls });
+
+			const progressCell = row.createEl('td');
+			if (entry.progress >= 0) {
+				progressCell.textContent = `${entry.progress}%`;
+			} else {
+				progressCell.textContent = '-';
+			}
+
+			row.createEl('td', { text: new Date(entry.startTime).toLocaleString() });
+
+			const elapsed = entry.endTime - entry.startTime;
+			const elapsedCell = row.createEl('td');
+			if (elapsed < 1000) {
+				elapsedCell.textContent = `${elapsed}ms`;
+			} else if (elapsed < 60000) {
+				elapsedCell.textContent = `${(elapsed / 1000).toFixed(1)}s`;
+			} else {
+				elapsedCell.textContent = `${Math.floor(elapsed / 60000)}m${Math.floor((elapsed % 60000) / 1000)}s`;
+			}
+
+			const feedbackCell = row.createEl('td', { cls: 'sillot-dev-task-feedback' });
+			feedbackCell.textContent = entry.resultMessage ? (entry.resultMessage.length > 50 ? entry.resultMessage.substring(0, 50) + '...' : entry.resultMessage) : '-';
+			if (entry.resultMessage) {
+				feedbackCell.title = entry.resultMessage;
+			}
+		}
 	}
 
 	private detectLogLevel(line: string): 'debug' | 'info' | 'warn' | 'error' | null {

@@ -15,6 +15,7 @@ export interface PluginSettings {
 	logFilePath: string;
 	publishCreatePR: boolean;
 	publishBranchPrefix: string;
+	clearTaskHistoryOnStartup: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	logFilePath: '.obsidian/plugins/sillot/log/sillot.log',
 	publishCreatePR: true,
 	publishBranchPrefix: 'publish/',
+	clearTaskHistoryOnStartup: true,
 };
 
 export interface PluginSyncInfo {
@@ -118,6 +120,7 @@ export interface FilePublishInfo {
 	filePath: string;
 	fileName: string;
 	vuepressPath: string | null;
+	publishId: string | null;
 	localStatus: PublishStatus;
 	siteStatus: PublishStatus;
 	localMtime: number | null;
