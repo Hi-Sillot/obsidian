@@ -579,11 +579,13 @@ export class DocSyncPanel {
 		header.createEl('span', { text: '📤 发布情况', cls: `${PANEL_CLASS}-title` });
 
 		const btnArea = header.createDiv({ cls: `${PANEL_CLASS}-publish-header-actions` });
-		btnArea.createEl('button', {
-			text: '发布到本地',
-			cls: `${PANEL_CLASS}-sync-btn`,
-			attr: { title: '发布到本地 VuePress 项目' },
-		}).onclick = () => this.publishCurrentDoc('local');
+		if (Platform.isDesktop) {
+			btnArea.createEl('button', {
+				text: '发布到本地',
+				cls: `${PANEL_CLASS}-sync-btn`,
+				attr: { title: '发布到本地 VuePress 项目' },
+			}).onclick = () => this.publishCurrentDoc('local');
+		}
 		btnArea.createEl('button', {
 			text: '发布到 GitHub',
 			cls: `${PANEL_CLASS}-sync-btn`,

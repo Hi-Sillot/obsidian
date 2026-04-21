@@ -610,8 +610,8 @@ export class PublishStatusChecker {
 			return null;
 		}
 
-		const oldLines = publishedContent.split('\n');
-		const newLines = localContent.split('\n');
+		const oldLines = publishedContent.replace(/\r\n?/g, '\n').split('\n');
+		const newLines = localContent.replace(/\r\n?/g, '\n').split('\n');
 
 		const result = this.lcsDiff(oldLines, newLines);
 		this.logger?.info(TAG, `diff计算完成: ${file.path}`, `source=${compareSource}, +${result.addedCount} -${result.removedCount}${fallback ? ' (fallback)' : ''}`);
