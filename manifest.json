@@ -3,7 +3,7 @@
 	"name": "Sillot Plugin",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
+	"description": "Obsidian VuePress Publisher - publish notes to VuePress via GitHub API, sync with KDocs smart tables.",
 	"author": "Soltus",
 	"authorUrl": "https://github.com/Soltus",
 	"fundingUrl": "https://obsidian.md/pricing",

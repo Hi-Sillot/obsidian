@@ -13,6 +13,8 @@
     "isolatedModules": true,
     "strictNullChecks": true,
 	"allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "lib": [
       "DOM",
       "ES5",

@@ -1,7 +1,9 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import vuePlugin from "esbuild-plugin-vue3"; // 新增：引入 Vue 插件
+import vuePlugin from "esbuild-plugin-vue3";
+import fs from "fs";
+import path from "path";
 
 const banner =
 `/*
@@ -11,6 +13,27 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+const distDir = "dist";
+
+function copyReleaseFiles() {
+	if (!fs.existsSync(distDir)) {
+		fs.mkdirSync(distDir, { recursive: true });
+	}
+
+	const filesToCopy = [
+		{ src: "manifest.json", dest: path.join(distDir, "manifest.json") },
+		{ src: "src/styles/styles.css", dest: path.join(distDir, "styles.css") },
+	];
+
+	for (const { src, dest } of filesToCopy) {
+		if (fs.existsSync(src)) {
+			fs.copyFileSync(src, dest);
+			console.log(`[copy] ${src} → ${dest}`);
+		} else {
+			console.warn(`[copy] ${src} not found, skipping`);
+		}
+	}
+}
 
 const context = await esbuild.context({
 	banner: {
@@ -18,7 +41,7 @@ const context = await esbuild.context({
 	},
 	entryPoints: ["src/main.ts"],
 	bundle: true,
-	plugins: [vuePlugin()], // 新增：添加 Vue 插件
+	plugins: [vuePlugin()],
 	external: [
 		"obsidian",
 		"electron",
@@ -39,13 +62,17 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	outfile: "main.js",
+	outdir: distDir,
+	entryNames: "main",
 	minify: prod,
 });
 
 if (prod) {
 	await context.rebuild();
+	copyReleaseFiles();
+	await context.dispose();
 	process.exit(0);
 } else {
+	copyReleaseFiles();
 	await context.watch();
 }
