@@ -174,22 +174,32 @@ export class PublishStatusChecker {
 	}
 
 	async checkMultipleFiles(files: TFile[]): Promise<FilePublishInfo[]> {
+		const BATCH_SIZE = 5;
 		const results: FilePublishInfo[] = [];
-		for (const file of files) {
-			try {
-				const info = await this.checkFileStatus(file);
-				results.push(info);
-			} catch (e) {
-				results.push({
-					filePath: file.path,
-					fileName: file.name,
-					vuepressPath: null,
-					publishId: null,
-					localStatus: 'unpublished',
-					siteStatus: 'unpublished',
-					localMtime: file.stat.mtime,
-					siteMtime: null,
-				});
+
+		for (let i = 0; i < files.length; i += BATCH_SIZE) {
+			const batch = files.slice(i, i + BATCH_SIZE);
+			const batchResults = await Promise.allSettled(
+				batch.map(file => this.checkFileStatus(file))
+			);
+
+			for (let j = 0; j < batchResults.length; j++) {
+				const result = batchResults[j];
+				const file = batch[j];
+				if (result.status === 'fulfilled') {
+					results.push(result.value);
+				} else {
+					results.push({
+						filePath: file.path,
+						fileName: file.name,
+						vuepressPath: null,
+						publishId: null,
+						localStatus: 'unpublished',
+						siteStatus: 'unpublished',
+						localMtime: file.stat.mtime,
+						siteMtime: null,
+					});
+				}
 			}
 		}
 		return results;
@@ -277,8 +287,7 @@ export class PublishStatusChecker {
 
 	private async findLocalFileByPublishId(publishId: string, sep: string): Promise<string | null> {
 		try {
-			const { existsSync, readFileSync, readdirSync, statSync } = require('fs') as typeof import('fs');
-			const path = require('path') as typeof import('path');
+			const { existsSync } = require('fs') as typeof import('fs');
 
 			const searchDirs = [this.publishRootPath, ''].filter(Boolean);
 			for (const subDir of searchDirs) {
@@ -288,7 +297,7 @@ export class PublishStatusChecker {
 
 				if (!existsSync(dirPath)) continue;
 
-				const result = this.searchDirForPublishId(dirPath, publishId, sep, path, existsSync, readFileSync, statSync, readdirSync);
+				const result = this.searchDirForPublishId(dirPath, publishId);
 				if (result) return result;
 			}
 		} catch {}
@@ -296,22 +305,19 @@ export class PublishStatusChecker {
 	}
 
 	private searchDirForPublishId(
-		dirPath: string, publishId: string, sep: string,
-		pathMod: typeof import('path'),
-		existsSync: typeof import('fs').existsSync,
-		readFileSync: typeof import('fs').readFileSync,
-		statSync: typeof import('fs').statSync,
-		readdirSync: typeof import('fs').readdirSync,
+		dirPath: string, publishId: string,
 		depth: number = 0
 	): string | null {
 		if (depth > 10) return null;
 		try {
+			const { readdirSync, readFileSync } = require('fs') as typeof import('fs');
+			const pathMod = require('path') as typeof import('path');
 			const entries = readdirSync(dirPath, { withFileTypes: true });
 			for (const entry of entries) {
 				if (entry.name.startsWith('.')) continue;
 				const fullPath = pathMod.join(dirPath, entry.name);
 				if (entry.isDirectory()) {
-					const result = this.searchDirForPublishId(fullPath, publishId, sep, pathMod, existsSync, readFileSync, statSync, readdirSync, depth + 1);
+					const result = this.searchDirForPublishId(fullPath, publishId, depth + 1);
 					if (result) return result;
 				} else if (entry.name.endsWith('.md')) {
 					try {
@@ -344,7 +350,7 @@ export class PublishStatusChecker {
 				entries?: Record<string, { mtime: number; hash?: string; publishId?: string }>;
 				publishIdIndex?: Record<string, string>;
 			};
-			const statusMap = data.entries || (data as unknown as Record<string, { mtime: number; hash?: string; publishId?: string }>);
+			const statusMap = data.entries;
 			if (!statusMap || typeof statusMap !== 'object') return 'unpublished';
 
 			let entry: { mtime: number; hash?: string; publishId?: string } | undefined;

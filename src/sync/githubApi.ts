@@ -37,7 +37,7 @@ export class GitHubApi {
 		const maxRetries = 3;
 		let lastError: Error | null = null;
 
-		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		for (let attempt = 0; attempt < maxRetries; attempt++) {
 			try {
 				const response = await requestUrl(params);
 				return response.json;
@@ -292,13 +292,11 @@ export class GitHubApi {
 	async uploadBatchFromZip(zipBlob: Blob, commitMessage: string, branch: string): Promise<void> {
 		const JSZip = (await import('jszip')).default;
 		const zip = await JSZip.loadAsync(zipBlob);
-		const files = Object.entries(zip.files)
-			.filter(([_, file]) => !file.dir)
-			.map(([path, file]) => ({ path, content: '' }));
+		const entries = Object.entries(zip.files).filter(([_, f]) => !f.dir);
+		const files: { path: string; content: string }[] = [];
 
-		for (let i = 0; i < files.length; i++) {
-			const [path, file] = Object.entries(zip.files).filter(([_, f]) => !f.dir)[i];
-			files[i].content = await file.async('base64');
+		for (const [path, file] of entries) {
+			files.push({ path, content: await file.async('base64') });
 		}
 
 		await this.publishFiles(files, {

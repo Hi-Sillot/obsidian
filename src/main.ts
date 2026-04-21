@@ -3,6 +3,11 @@ import { VuePressPublisherSettingTab } from './setting-tab';
 import { StyleInjector } from './preview/styleInjector';
 import { registerSyncBlockRenderer } from './preview/syncBlockRenderer';
 import { FileCollector } from './sync/fileCollector';
+
+function formatSyncDateTime(date: Date = new Date()): string {
+	const pad = (n: number) => n.toString().padStart(2, '0');
+	return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())} ${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
 import { PathMapper } from './sync/pathMapper';
 import { GitHubApi } from './sync/githubApi';
 import { SyncManager } from './sync/SyncManager';
@@ -302,7 +307,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 						.onClick(async () => {
 							const syncId = await this.promptSyncId();
 							if (!syncId) return;
-							const now = new SyncManager('', '', this.app.vault).formatDateTime();
+							const now = formatSyncDateTime();
 							const template = `\`sync:${syncId} Lv=${now}{}\``;
 							const cursor = editor.getCursor();
 							editor.replaceRange(template, cursor);
@@ -316,7 +321,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 						.onClick(async () => {
 							const syncId = await this.promptSyncId();
 							if (!syncId) return;
-							const now = new SyncManager('', '', this.app.vault).formatDateTime();
+							const now = formatSyncDateTime();
 							const template = `\`\`\`sync-block\n${syncId} Lv=${now}\n\`\`\``;
 							const cursor = editor.getCursor();
 							editor.replaceRange(template, cursor);
@@ -408,6 +413,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 		const { githubRepo, githubToken, stylesPath, defaultBranch } = this.settings;
 		if (githubToken && githubRepo && stylesPath) {
 			this.logger?.debug('Style', `加载样式: ${githubRepo}/${stylesPath}`);
+			this.styleInjector.setGitHubApi(this.createGitHubApi());
 			await this.styleInjector.loadStylesFromGitHub(githubRepo, githubToken, stylesPath, defaultBranch);
 			this.styleInjector.inject();
 			this.logger?.info('Style', 'VuePress 样式加载并注入成功');

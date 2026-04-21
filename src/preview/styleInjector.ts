@@ -3,10 +3,15 @@ import { GitHubApi } from '../sync/githubApi';
 export class StyleInjector {
 	private customCss: string = '';
 	private styleEl: HTMLStyleElement | null = null;
+	private githubApi: GitHubApi | null = null;
+
+	setGitHubApi(api: GitHubApi | null): void {
+		this.githubApi = api;
+	}
 
 	async loadStylesFromGitHub(repo: string, token: string, stylePath: string, branch: string): Promise<void> {
 		try {
-			const api = new GitHubApi(repo, token);
+			const api = this.githubApi || new GitHubApi(repo, token);
 			const content = await api.getFileContent(stylePath, branch);
 			if (content) {
 				this.customCss = content;

@@ -1,4 +1,4 @@
-﻿import { MarkdownRenderer, MarkdownPostProcessorContext } from 'obsidian';
+import { MarkdownRenderer, MarkdownPostProcessorContext } from 'obsidian';
 import type VuePressPublisherPlugin from '../main';
 import type { SyntaxDescriptor, ComponentDescriptor } from '../bridge/types';
 
@@ -27,6 +27,7 @@ const CONTAINER_TITLES: Record<string, string> = {
 import { LABEL_MAP, BANNER_MAP, VSCODE_SVG, CEDOSS_MAP } from '../../../plume/docs/.vuepress/plugins/vuepress-plugin-sillot-inline/shared/component-data.ts';
 
 interface PendingContainer {
+		key: string;
 		type: string;
 		title: string;
 		tabGroupId: string;
@@ -40,6 +41,7 @@ export class SyntaxRegistry {
 	private plugin: VuePressPublisherPlugin;
 	private registered = false;
 	private pendingContainers = new Map<string, PendingContainer>();
+	private pendingCounter = 0;
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -66,7 +68,12 @@ export class SyntaxRegistry {
 
 		this.plugin.logger?.debug(TAG, `处理 section, sourcePath="${sourcePath}", text="${text.slice(0, 60)}..."`);
 
-		const pending = this.pendingContainers.get(sourcePath);
+		let pending: PendingContainer | undefined;
+		for (const [k, v] of this.pendingContainers) {
+			if (k.startsWith(sourcePath + '::')) {
+				pending = v;
+			}
+		}
 		const colonLineMatch = text.match(/^(:{3,})\s*$/);
 		const pureCloseColons = colonLineMatch ? colonLineMatch[1].length : 0;
 
@@ -155,7 +162,9 @@ export class SyntaxRegistry {
 				await this.processContainerInline(el, containerType, tabGroupId, title, contentLines, ctx);
 			} else {
 				this.plugin.logger?.debug(TAG, `开标记 section (${colons}冒号, 无闭合，等待后续section, containerType=${containerType}`);
-				this.pendingContainers.set(sourcePath, {
+				const key = `${sourcePath}::${++this.pendingCounter}`;
+				this.pendingContainers.set(key, {
+					key,
 					type: containerType,
 					title,
 					tabGroupId,
@@ -455,7 +464,7 @@ export class SyntaxRegistry {
 		const { type, title, tabGroupId, startEl, contentLines, closeEl } = pending;
 		this.plugin.logger?.debug(TAG, `finalizeContainer: ::: ${type}, 总内容行数=${contentLines.length}`);
 
-		this.pendingContainers.delete(ctx.sourcePath);
+		this.pendingContainers.delete(pending.key);
 
 		await this.processContainerInline(startEl, type, tabGroupId, title, contentLines, ctx);
 		if (closeEl) {

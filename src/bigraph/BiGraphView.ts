@@ -16,7 +16,9 @@ export class BiGraphView extends ItemView {
 	private simulation: d3Force.Simulation<BiGraphNode, BiGraphLink> | null = null;
 	private transform = d3Zoom.zoomIdentity;
 	private graphData: BiGraphData = { nodes: [], links: [] };
+	private nodeMap: Map<string, BiGraphNode> = new Map();
 	private hoveredNode: BiGraphNode | null = null;
+	private connectedNodesCache: Set<BiGraphNode> = new Set();
 	private isDragging = false;
 	private draggingNode: BiGraphNode | null = null;
 	private showLabels = true;
@@ -119,7 +121,9 @@ export class BiGraphView extends ItemView {
 		this.canvas.height = rect.height * dpr;
 		this.canvas.style.width = rect.width + 'px';
 		this.canvas.style.height = rect.height + 'px';
-		this.context?.scale(dpr, dpr);
+		if (this.context) {
+			this.context.setTransform(dpr, 0, 0, dpr, 0, 0);
+		}
 	}
 
 	private updateStats() {
@@ -143,6 +147,7 @@ export class BiGraphView extends ItemView {
 		try {
 			const data = await this.plugin.biGraphService!.getGlobalGraph();
 			this.graphData = this.deepCopyData(data);
+			this.nodeMap = new Map(data.nodes.map(n => [n.id, n]));
 			this.markCurrentNode();
 			this.initializeSimulation();
 			this.setupZoom();
@@ -277,6 +282,7 @@ export class BiGraphView extends ItemView {
 
 		if (node !== this.hoveredNode) {
 			this.hoveredNode = node;
+			this.rebuildConnectedNodesCache();
 			this.ticked();
 			this.updateTooltip(e, node);
 		} else if (this.tooltipEl) {
@@ -486,21 +492,28 @@ export class BiGraphView extends ItemView {
 	}
 
 	private getConnectedNodes(): Set<BiGraphNode> {
+		return this.connectedNodesCache;
+	}
+
+	private rebuildConnectedNodesCache() {
 		const connected = new Set<BiGraphNode>();
-		if (!this.hoveredNode) return connected;
+		if (!this.hoveredNode) {
+			this.connectedNodesCache = connected;
+			return;
+		}
 
 		for (const link of this.graphData.links) {
 			const source = typeof link.source === 'string'
-				? this.graphData.nodes.find(n => n.id === link.source)
+				? this.nodeMap.get(link.source)
 				: link.source as BiGraphNode;
 			const target = typeof link.target === 'string'
-				? this.graphData.nodes.find(n => n.id === link.target)
+				? this.nodeMap.get(link.target)
 				: link.target as BiGraphNode;
 
 			if (source === this.hoveredNode && target) connected.add(target);
 			if (target === this.hoveredNode && source) connected.add(source);
 		}
-		return connected;
+		this.connectedNodesCache = connected;
 	}
 
 	private getAccentColor(): string {

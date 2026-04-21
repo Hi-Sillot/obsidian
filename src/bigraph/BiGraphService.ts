@@ -9,6 +9,7 @@ export class BiGraphService {
 	private app: App;
 	private config: BiGraphConfig;
 	private pathMapEntries: PathMapEntry[] = [];
+	private vaultPathMap: Map<string, string> = new Map();
 	private cachedData: BiGraphData | null = null;
 	private cacheTimestamp: number = 0;
 	private cacheTTL = 60000;
@@ -27,6 +28,7 @@ export class BiGraphService {
 
 	updatePathMap(entries: PathMapEntry[]) {
 		this.pathMapEntries = entries;
+		this.vaultPathMap = new Map(entries.map(e => [e.sourceRelPath, e.vuepressPath]));
 		this.invalidateCache();
 	}
 
@@ -153,11 +155,7 @@ export class BiGraphService {
 		}
 
 		for (const node of graph.nodes) {
-			node.linkCount = graph.links.filter(l => {
-				const sId = typeof l.source === 'string' ? l.source : l.source.id;
-				const tId = typeof l.target === 'string' ? l.target : l.target.id;
-				return sId === node.id || tId === node.id;
-			}).length;
+			node.linkCount = node.outlink.length + node.backlink.length;
 			node.isIsolated = node.linkCount === 0;
 		}
 
@@ -175,10 +173,7 @@ export class BiGraphService {
 			outlinks: string[];
 		}>();
 
-		const vaultPathMap = new Map<string, string>();
-		for (const entry of this.pathMapEntries) {
-			vaultPathMap.set(entry.sourceRelPath, entry.vuepressPath);
-		}
+		const vaultPathMap = this.vaultPathMap;
 
 		for (const file of files) {
 			const cache = this.app.metadataCache.getFileCache(file);
@@ -225,12 +220,8 @@ export class BiGraphService {
 			}
 		}
 
-		const vaultPathMap = new Map<string, string>();
-		for (const entry of this.pathMapEntries) {
-			vaultPathMap.set(entry.sourceRelPath, entry.vuepressPath);
-		}
-		if (vaultPathMap.has(cleanPath)) return vaultPathMap.get(cleanPath)!;
-		if (vaultPathMap.has(cleanPath + '.md')) return vaultPathMap.get(cleanPath + '.md')!;
+		if (this.vaultPathMap.has(cleanPath)) return this.vaultPathMap.get(cleanPath)!;
+		if (this.vaultPathMap.has(cleanPath + '.md')) return this.vaultPathMap.get(cleanPath + '.md')!;
 
 		return null;
 	}

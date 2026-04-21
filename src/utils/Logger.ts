@@ -17,6 +17,7 @@ export class Logger {
 	private maxFileSize = 2 * 1024 * 1024;
 	private writeTimer: ReturnType<typeof setTimeout> | null = null;
 	private pendingLines: string[] = [];
+	private flushing = false;
 
 	constructor(app: App, getSettings: () => PluginSettings) {
 		this.app = app;
@@ -101,6 +102,11 @@ export class Logger {
 
 	async flush() {
 		if (this.pendingLines.length === 0) return;
+		if (this.flushing) {
+			this.scheduleWrite();
+			return;
+		}
+		this.flushing = true;
 
 		const lines = this.pendingLines.splice(0);
 		const text = lines.join('\n') + '\n';
@@ -118,15 +124,17 @@ export class Logger {
 			if (await adapter.exists(logPath)) {
 				existing = await adapter.read(logPath);
 				if (existing.length > this.maxFileSize) {
-					const lines = existing.split('\n');
-					const keepCount = Math.floor(lines.length / 2);
-					existing = lines.slice(-keepCount).join('\n');
+					const existingLines = existing.split('\n');
+					const keepCount = Math.floor(existingLines.length / 2);
+					existing = existingLines.slice(-keepCount).join('\n');
 				}
 			}
 
 			await adapter.write(logPath, existing + text);
 		} catch (e) {
 			console.error('[Sillot/Logger] 写入日志文件失败:', e.message);
+		} finally {
+			this.flushing = false;
 		}
 	}
 

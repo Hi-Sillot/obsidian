@@ -27,6 +27,6 @@ export class BridgeCssInjector {
 	}
 
 	isInjected(): boolean {
-		return this.styleEl !== null || document.getElementById('sillot-bridge-vars') !== null;
+		return this.styleEl !== null && document.contains(this.styleEl);
 	}
 }

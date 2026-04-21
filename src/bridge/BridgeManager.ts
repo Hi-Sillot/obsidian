@@ -17,6 +17,19 @@ const BRIDGE_FILES = [
 	'publish-status.json',
 ] as const;
 
+type AssetKey = 'version' | 'pathMap' | 'syntaxDescriptors' | 'componentProps' | 'authors' | 'bridgeCss' | 'permalinkIndex' | 'publishStatus';
+
+const ASSET_FILE_MAP: { file: string; key: AssetKey; isText: boolean }[] = [
+	{ file: 'version.json', key: 'version', isText: false },
+	{ file: 'path-map.json', key: 'pathMap', isText: false },
+	{ file: 'syntax-descriptors.json', key: 'syntaxDescriptors', isText: false },
+	{ file: 'component-props.json', key: 'componentProps', isText: false },
+	{ file: 'authors.json', key: 'authors', isText: false },
+	{ file: 'bridge-vars.css', key: 'bridgeCss', isText: true },
+	{ file: 'permalink-index.json', key: 'permalinkIndex', isText: false },
+	{ file: 'publish-status.json', key: 'publishStatus', isText: false },
+];
+
 export class BridgeManager {
 	private app: App;
 	private assets: BridgeAssets = { ...DEFAULT_BRIDGE_ASSETS };
@@ -71,6 +84,22 @@ export class BridgeManager {
 		return this.cacheTimestamp;
 	}
 
+	private async loadAssetsFromReader(
+		readText: (file: string) => Promise<string | null>,
+		requireVersion: boolean = true
+	): Promise<void> {
+		for (const { file, key, isText } of ASSET_FILE_MAP) {
+			const text = await readText(file);
+			if (text === null) {
+				if (requireVersion && key === 'version') {
+					throw new Error(`${file} 获取失败（可能返回了 HTML 而非 JSON，请检查配置）`);
+				}
+				continue;
+			}
+			(this.assets as any)[key] = isText ? text : JSON.parse(text);
+		}
+	}
+
 	async loadFromCache(): Promise<boolean> {
 		try {
 			const adapter = this.app.vault.adapter;
@@ -80,44 +109,13 @@ export class BridgeManager {
 				return false;
 			}
 
-			const version = JSON.parse(await adapter.read(versionPath)) as BridgeVersion;
-			this.assets.version = version;
+			await this.loadAssetsFromReader(async (file) => {
+				const fullPath = `${CACHE_DIR}/${file}`;
+				if (!(await adapter.exists(fullPath))) return null;
+				return adapter.read(fullPath);
+			}, false);
 
-			const pathMapPath = `${CACHE_DIR}/path-map.json`;
-			if (await adapter.exists(pathMapPath)) {
-				this.assets.pathMap = JSON.parse(await adapter.read(pathMapPath)) as PathMapData;
-			}
-
-			const syntaxPath = `${CACHE_DIR}/syntax-descriptors.json`;
-			if (await adapter.exists(syntaxPath)) {
-				this.assets.syntaxDescriptors = JSON.parse(await adapter.read(syntaxPath)) as SyntaxDescriptorsData;
-			}
-
-			const componentPath = `${CACHE_DIR}/component-props.json`;
-			if (await adapter.exists(componentPath)) {
-				this.assets.componentProps = JSON.parse(await adapter.read(componentPath)) as ComponentPropsData;
-			}
-
-			const authorsPath = `${CACHE_DIR}/authors.json`;
-			if (await adapter.exists(authorsPath)) {
-				this.assets.authors = JSON.parse(await adapter.read(authorsPath)) as AuthorsData;
-			}
-
-			const cssPath = `${CACHE_DIR}/bridge-vars.css`;
-			if (await adapter.exists(cssPath)) {
-				this.assets.bridgeCss = await adapter.read(cssPath);
-			}
-
-			const permalinkIndexPath = `${CACHE_DIR}/permalink-index.json`;
-			if (await adapter.exists(permalinkIndexPath)) {
-				this.assets.permalinkIndex = JSON.parse(await adapter.read(permalinkIndexPath)) as PermalinkIndexData;
-			}
-
-			const publishStatusPath = `${CACHE_DIR}/publish-status.json`;
-			if (await adapter.exists(publishStatusPath)) {
-				this.assets.publishStatus = JSON.parse(await adapter.read(publishStatusPath)) as PublishStatusData;
-			}
-
+			const version = this.assets.version!;
 			const tsPath = `${CACHE_DIR}/.cache-timestamp`;
 			if (await adapter.exists(tsPath)) {
 				this.cacheTimestamp = parseInt(await adapter.read(tsPath), 10) || 0;
@@ -139,29 +137,12 @@ export class BridgeManager {
 				await adapter.mkdir(CACHE_DIR);
 			}
 
-			if (this.assets.version) {
-				await adapter.write(`${CACHE_DIR}/version.json`, JSON.stringify(this.assets.version, null, 2));
-			}
-			if (this.assets.pathMap) {
-				await adapter.write(`${CACHE_DIR}/path-map.json`, JSON.stringify(this.assets.pathMap, null, 2));
-			}
-			if (this.assets.syntaxDescriptors) {
-				await adapter.write(`${CACHE_DIR}/syntax-descriptors.json`, JSON.stringify(this.assets.syntaxDescriptors, null, 2));
-			}
-			if (this.assets.componentProps) {
-				await adapter.write(`${CACHE_DIR}/component-props.json`, JSON.stringify(this.assets.componentProps, null, 2));
-			}
-			if (this.assets.authors) {
-				await adapter.write(`${CACHE_DIR}/authors.json`, JSON.stringify(this.assets.authors, null, 2));
-			}
-			if (this.assets.bridgeCss) {
-				await adapter.write(`${CACHE_DIR}/bridge-vars.css`, this.assets.bridgeCss);
-			}
-			if (this.assets.permalinkIndex) {
-				await adapter.write(`${CACHE_DIR}/permalink-index.json`, JSON.stringify(this.assets.permalinkIndex, null, 2));
-			}
-			if (this.assets.publishStatus) {
-				await adapter.write(`${CACHE_DIR}/publish-status.json`, JSON.stringify(this.assets.publishStatus, null, 2));
+			for (const { file, key, isText } of ASSET_FILE_MAP) {
+				const value = (this.assets as any)[key];
+				if (value) {
+					const content = isText ? value : JSON.stringify(value, null, 2);
+					await adapter.write(`${CACHE_DIR}/${file}`, content);
+				}
 			}
 
 			this.cacheTimestamp = Date.now();
@@ -202,47 +183,11 @@ export class BridgeManager {
 		try {
 			const { readFileSync, existsSync } = require('fs') as typeof import('fs');
 
-			const versionPath = `${basePath}${sep}version.json`;
-			if (!existsSync(versionPath)) {
-				throw new Error(`Bridge 产物不存在: ${versionPath}`);
-			}
-
-			this.assets.version = JSON.parse(readFileSync(versionPath, 'utf-8')) as BridgeVersion;
-
-			const pathMapPath = `${basePath}${sep}path-map.json`;
-			if (existsSync(pathMapPath)) {
-				this.assets.pathMap = JSON.parse(readFileSync(pathMapPath, 'utf-8')) as PathMapData;
-			}
-
-			const syntaxPath = `${basePath}${sep}syntax-descriptors.json`;
-			if (existsSync(syntaxPath)) {
-				this.assets.syntaxDescriptors = JSON.parse(readFileSync(syntaxPath, 'utf-8')) as SyntaxDescriptorsData;
-			}
-
-			const componentPath = `${basePath}${sep}component-props.json`;
-			if (existsSync(componentPath)) {
-				this.assets.componentProps = JSON.parse(readFileSync(componentPath, 'utf-8')) as ComponentPropsData;
-			}
-
-			const authorsPath = `${basePath}${sep}authors.json`;
-			if (existsSync(authorsPath)) {
-				this.assets.authors = JSON.parse(readFileSync(authorsPath, 'utf-8')) as AuthorsData;
-			}
-
-			const cssPath = `${basePath}${sep}bridge-vars.css`;
-			if (existsSync(cssPath)) {
-				this.assets.bridgeCss = readFileSync(cssPath, 'utf-8');
-			}
-
-			const permalinkIndexPath = `${basePath}${sep}permalink-index.json`;
-			if (existsSync(permalinkIndexPath)) {
-				this.assets.permalinkIndex = JSON.parse(readFileSync(permalinkIndexPath, 'utf-8')) as PermalinkIndexData;
-			}
-
-			const publishStatusPath = `${basePath}${sep}publish-status.json`;
-			if (existsSync(publishStatusPath)) {
-				this.assets.publishStatus = JSON.parse(readFileSync(publishStatusPath, 'utf-8')) as PublishStatusData;
-			}
+			await this.loadAssetsFromReader((file) => {
+				const fullPath = `${basePath}${sep}${file}`;
+				if (!existsSync(fullPath)) return Promise.resolve(null);
+				return Promise.resolve(readFileSync(fullPath, 'utf-8'));
+			});
 
 			this.logger?.info(TAG, '本地 Bridge 加载成功', `v${this.assets.version?.version}, paths=${this.assets.pathMap?.entries?.length || 0}, syntaxes=${this.assets.syntaxDescriptors?.syntaxes?.length || 0}, authors=${Object.keys(this.assets.authors?.authors || {}).length}`);
 
@@ -266,46 +211,13 @@ export class BridgeManager {
 		this.logger?.info(TAG, `从站点加载 Bridge 产物: ${bridgeBase}`);
 
 		try {
-			const versionRes = await this.fetchJson<BridgeVersion>(`${bridgeBase}/version.json`);
-			if (!versionRes) {
-				throw new Error('version.json 获取失败（可能返回了 HTML 而非 JSON，请检查站点域名和部署配置）');
-			}
-			this.assets.version = versionRes;
-
-			const pathMapRes = await this.fetchJson<PathMapData>(`${bridgeBase}/path-map.json`);
-			if (pathMapRes) {
-				this.assets.pathMap = pathMapRes;
-			}
-
-			const syntaxRes = await this.fetchJson<SyntaxDescriptorsData>(`${bridgeBase}/syntax-descriptors.json`);
-			if (syntaxRes) {
-				this.assets.syntaxDescriptors = syntaxRes;
-			}
-
-			const componentRes = await this.fetchJson<ComponentPropsData>(`${bridgeBase}/component-props.json`);
-			if (componentRes) {
-				this.assets.componentProps = componentRes;
-			}
-
-			const authorsRes = await this.fetchJson<AuthorsData>(`${bridgeBase}/authors.json`);
-			if (authorsRes) {
-				this.assets.authors = authorsRes;
-			}
-
-			const cssRes = await this.fetchText(`${bridgeBase}/bridge-vars.css`, 'text/css');
-			if (cssRes) {
-				this.assets.bridgeCss = cssRes;
-			}
-
-			const permalinkIndexRes = await this.fetchJson<any>(`${bridgeBase}/permalink-index.json`);
-			if (permalinkIndexRes) {
-				this.assets.permalinkIndex = permalinkIndexRes;
-			}
-
-			const publishStatusRes = await this.fetchJson<PublishStatusData>(`${bridgeBase}/publish-status.json`);
-			if (publishStatusRes) {
-				this.assets.publishStatus = publishStatusRes;
-			}
+			await this.loadAssetsFromReader(async (file) => {
+				const url = `${bridgeBase}/${file}`;
+				if (file.endsWith('.css')) {
+					return this.fetchText(url, 'text/css');
+				}
+				return this.fetchJsonText(url);
+			});
 
 			this.logger?.info(TAG, '站点 Bridge 加载成功', `v${this.assets.version?.version}, paths=${this.assets.pathMap?.entries?.length || 0}, syntaxes=${this.assets.syntaxDescriptors?.syntaxes?.length || 0}, authors=${Object.keys(this.assets.authors?.authors || {}).length}`);
 
@@ -318,7 +230,7 @@ export class BridgeManager {
 		}
 	}
 
-	private async fetchJson<T>(url: string): Promise<T | null> {
+	private async fetchJsonText(url: string): Promise<string | null> {
 		try {
 			const res = await requestUrl({ url, throw: false });
 			if (res.status !== 200) return null;
@@ -334,11 +246,16 @@ export class BridgeManager {
 				return null;
 			}
 
-			return res.json as T;
+			return res.text;
 		} catch (e) {
 			this.logger?.warn(TAG, `获取 ${url} 失败`, e.message);
 			return null;
 		}
+	}
+
+	private async fetchJson<T>(url: string): Promise<T | null> {
+		const text = await this.fetchJsonText(url);
+		return text ? JSON.parse(text) as T : null;
 	}
 
 	private async fetchText(url: string, expectedType?: string): Promise<string | null> {
@@ -405,46 +322,9 @@ export class BridgeManager {
 		this.logger?.info(TAG, `从 GitHub 加载 Bridge 产物: ${this.githubRepo}:${branch}/${bridgePath}`);
 
 		try {
-			const versionText = await this.fetchGitHubFile(`${bridgePath}/version.json`, branch);
-			if (!versionText) {
-				throw new Error('GitHub 上未找到 version.json，可能尚未构建部署');
-			}
-			this.assets.version = JSON.parse(versionText) as BridgeVersion;
-
-			const pathMapText = await this.fetchGitHubFile(`${bridgePath}/path-map.json`, branch);
-			if (pathMapText) {
-				this.assets.pathMap = JSON.parse(pathMapText) as PathMapData;
-			}
-
-			const syntaxText = await this.fetchGitHubFile(`${bridgePath}/syntax-descriptors.json`, branch);
-			if (syntaxText) {
-				this.assets.syntaxDescriptors = JSON.parse(syntaxText) as SyntaxDescriptorsData;
-			}
-
-			const componentText = await this.fetchGitHubFile(`${bridgePath}/component-props.json`, branch);
-			if (componentText) {
-				this.assets.componentProps = JSON.parse(componentText) as ComponentPropsData;
-			}
-
-			const authorsText = await this.fetchGitHubFile(`${bridgePath}/authors.json`, branch);
-			if (authorsText) {
-				this.assets.authors = JSON.parse(authorsText) as AuthorsData;
-			}
-
-			const cssText = await this.fetchGitHubFile(`${bridgePath}/bridge-vars.css`, branch);
-			if (cssText) {
-				this.assets.bridgeCss = cssText;
-			}
-
-			const permalinkIndexText = await this.fetchGitHubFile(`${bridgePath}/permalink-index.json`, branch);
-			if (permalinkIndexText) {
-				this.assets.permalinkIndex = JSON.parse(permalinkIndexText) as PermalinkIndexData;
-			}
-
-			const publishStatusText = await this.fetchGitHubFile(`${bridgePath}/publish-status.json`, branch);
-			if (publishStatusText) {
-				this.assets.publishStatus = JSON.parse(publishStatusText) as PublishStatusData;
-			}
+			await this.loadAssetsFromReader((file) => {
+				return this.fetchGitHubFile(`${bridgePath}/${file}`, branch);
+			});
 
 			this.logger?.info(TAG, 'GitHub Bridge 加载成功', `v${this.assets.version?.version}, paths=${this.assets.pathMap?.entries?.length || 0}`);
 

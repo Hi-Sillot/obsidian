@@ -170,36 +170,36 @@ export class PermalinkConflictChecker {
 					result.splice(idx, 1);
 					this.logger?.info(TAG, `跳过发布: ${conflict.publishFile.path} (permalink: ${conflict.permalink})`);
 				}
-			} else if (resolution.action === 'rename') {
+			} else if (resolution.action === 'rename' || resolution.action === 'remove-permalink') {
 				const targetPath = this.mapToVuePressPath(conflict.publishFile);
 				const idx = result.findIndex(f => f.path === targetPath);
 				if (idx !== -1) {
-					const decoded = decodeURIComponent(escape(atob(result[idx].content)));
-					const updated = decoded.replace(
-						/^permalink:.*$/m,
-						`permalink: ${resolution.newPermalink}`
-					);
-					result[idx].content = btoa(unescape(encodeURIComponent(updated)));
-					this.logger?.info(TAG, `重命名 permalink: ${conflict.permalink} -> ${resolution.newPermalink}`);
-				}
-			} else if (resolution.action === 'remove-permalink') {
-				const targetPath = this.mapToVuePressPath(conflict.publishFile);
-				const idx = result.findIndex(f => f.path === targetPath);
-				if (idx !== -1) {
-					const decoded = decodeURIComponent(escape(atob(result[idx].content)));
-					const lines = decoded.split(/\r?\n/);
-					if (lines[0] === '---') {
-						const endIdx = lines.indexOf('---', 1);
-						if (endIdx !== -1) {
-							const newLines = [];
-							for (let i = 0; i < lines.length; i++) {
-								if (i > 0 && i < endIdx && lines[i].startsWith('permalink:')) continue;
-								newLines.push(lines[i]);
+					try {
+						let decoded = decodeURIComponent(escape(atob(result[idx].content)));
+						if (resolution.action === 'rename') {
+							decoded = decoded.replace(
+								/^permalink:.*$/m,
+								`permalink: ${resolution.newPermalink}`
+							);
+							this.logger?.info(TAG, `重命名 permalink: ${conflict.permalink} -> ${resolution.newPermalink}`);
+						} else {
+							const lines = decoded.split(/\r?\n/);
+							if (lines[0] === '---') {
+								const endIdx = lines.indexOf('---', 1);
+								if (endIdx !== -1) {
+									const newLines = [];
+									for (let i = 0; i < lines.length; i++) {
+										if (i > 0 && i < endIdx && lines[i].startsWith('permalink:')) continue;
+										newLines.push(lines[i]);
+									}
+									decoded = newLines.join('\n');
+									this.logger?.info(TAG, `去掉 permalink: ${conflict.publishFile.path} (原 permalink: ${conflict.permalink})`);
+								}
 							}
-							const updated = newLines.join('\n');
-							result[idx].content = btoa(unescape(encodeURIComponent(updated)));
-							this.logger?.info(TAG, `去掉 permalink: ${conflict.publishFile.path} (原 permalink: ${conflict.permalink})`);
 						}
+						result[idx].content = btoa(unescape(encodeURIComponent(decoded)));
+					} catch (e) {
+						this.logger?.warn(TAG, `Base64 解码失败，跳过处理: ${targetPath}`, e.message);
 					}
 				}
 			}

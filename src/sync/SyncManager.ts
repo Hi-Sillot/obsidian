@@ -12,7 +12,9 @@ export class SyncManager {
 	}
 
 	formatDateTime(): string {
-		return this.client.formatDateTime();
+		const date = new Date();
+		const pad = (n: number) => n.toString().padStart(2, '0');
+		return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())} ${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 	}
 
 	parseSyncBlocks(content: string, _filePath: string): ParsedSyncBlock[] {
@@ -47,7 +49,7 @@ export class SyncManager {
 			});
 		}
 
-		const docInlineRegex = /`sync:([^\s{`]+)(?:\s+Lv=(\d{8}\s\d{6}))?\{([^}]*)\}`/g;
+		const docInlineRegex = /`sync:(?!global:)([^\s{`]+)(?:\s+Lv=(\d{8}\s\d{6}))?\{([^}]*)\}`/g;
 		while ((match = docInlineRegex.exec(content)) !== null) {
 			blocks.push({
 				syncId: match[1],
@@ -171,6 +173,10 @@ export class SyncManager {
 		const cloudTimeNum = parseInt(cloudTime.replace(/\s/g, ''));
 
 		if (localTimeNum === cloudTimeNum) {
+			if (localContent !== cloudContent) {
+				await this.client.markConflict(block.syncId, notePath, localTime);
+				return { action: '冲突待解决', contentChanged: false, newContent: localContent, newTime: localTime, conflict: true };
+			}
 			return { action: '已同步', contentChanged: false, newContent: localContent, newTime: localTime, conflict: false };
 		}
 		if (localTimeNum > cloudTimeNum) {
@@ -183,12 +189,8 @@ export class SyncManager {
 			});
 			return { action: '本地更新推送', contentChanged: false, newContent: localContent, newTime: localTime, conflict: false };
 		}
-		if (cloudTimeNum > localTimeNum) {
-			return { action: '云端更新拉取', contentChanged: true, newContent: cloudContent, newTime: cloudTime, conflict: false };
-		}
 
-		await this.client.markConflict(block.syncId, notePath, localTime);
-		return { action: '冲突待解决', contentChanged: false, newContent: localContent, newTime: localTime, conflict: true };
+		return { action: '云端更新拉取', contentChanged: true, newContent: cloudContent, newTime: cloudTime, conflict: false };
 	}
 
 	async getPluginSyncList(category?: string): Promise<KDocsResponse> {
