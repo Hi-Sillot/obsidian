@@ -15,9 +15,10 @@ const BRIDGE_FILES = [
 	'bridge-vars.css',
 	'permalink-index.json',
 	'publish-status.json',
+	'inline-components.json',
 ] as const;
 
-type AssetKey = 'version' | 'pathMap' | 'syntaxDescriptors' | 'componentProps' | 'authors' | 'bridgeCss' | 'permalinkIndex' | 'publishStatus';
+type AssetKey = 'version' | 'pathMap' | 'syntaxDescriptors' | 'componentProps' | 'authors' | 'bridgeCss' | 'permalinkIndex' | 'publishStatus' | 'inlineComponents';
 
 const ASSET_FILE_MAP: { file: string; key: AssetKey; isText: boolean }[] = [
 	{ file: 'version.json', key: 'version', isText: false },
@@ -28,6 +29,7 @@ const ASSET_FILE_MAP: { file: string; key: AssetKey; isText: boolean }[] = [
 	{ file: 'bridge-vars.css', key: 'bridgeCss', isText: true },
 	{ file: 'permalink-index.json', key: 'permalinkIndex', isText: false },
 	{ file: 'publish-status.json', key: 'publishStatus', isText: false },
+	{ file: 'inline-components.json', key: 'inlineComponents', isText: false },
 ];
 
 export class BridgeManager {

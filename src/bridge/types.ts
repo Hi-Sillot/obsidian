@@ -93,6 +93,34 @@ export interface PublishStatusData {
 	publishIdIndex: Record<string, string>;
 }
 
+export interface LabelColor {
+	r: number;
+	g: number;
+	b: number;
+	h: number;
+	s: number;
+	l: number;
+}
+
+export interface LabelEntry {
+	fullName: string;
+	color: LabelColor;
+}
+
+export interface BannerEntry {
+	flashCls: string;
+	iconHtml: string;
+	text: string;
+}
+
+export interface InlineComponentData {
+	version: string;
+	labels: Record<string, LabelEntry>;
+	banners: Record<string, BannerEntry>;
+	vscodeSvg: string;
+	cedossMap: Record<string, string>;
+}
+
 export interface BridgeAssets {
 	version: BridgeVersion | null;
 	pathMap: PathMapData | null;
@@ -102,6 +130,7 @@ export interface BridgeAssets {
 	bridgeCss: string | null;
 	permalinkIndex: PermalinkIndexData | null;
 	publishStatus: PublishStatusData | null;
+	inlineComponents: InlineComponentData | null;
 }
 
 export const DEFAULT_BRIDGE_ASSETS: BridgeAssets = {
@@ -113,4 +142,5 @@ export const DEFAULT_BRIDGE_ASSETS: BridgeAssets = {
 	bridgeCss: null,
 	permalinkIndex: null,
 	publishStatus: null,
+	inlineComponents: null,
 };

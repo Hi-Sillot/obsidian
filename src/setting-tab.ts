@@ -61,17 +61,20 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 				});
 				return f;
 			})())
-			.addText(text => text
-				.setPlaceholder('ghp_xxxxxxxxxxxxxxxxxxxx')
-				.setValue(this.plugin.settings.githubToken)
-				.onChange(async (value) => {
-					this.plugin.settings.githubToken = value;
-					await this.plugin.saveSettings();
-					this.plugin.bridgeManager.updateConfig({ githubToken: value });
-					if (this.plugin.publishStatusChecker) {
-						this.plugin.publishStatusChecker.updateConfig({ githubToken: value });
-					}
-				}));
+			.addText(text => {
+				text
+					.setPlaceholder('ghp_xxxxxxxxxxxxxxxxxxxx')
+					.setValue(this.plugin.settings.githubToken)
+					.onChange(async (value) => {
+						this.plugin.settings.githubToken = value;
+						await this.plugin.saveSettings();
+						this.plugin.bridgeManager.updateConfig({ githubToken: value });
+						if (this.plugin.publishStatusChecker) {
+							this.plugin.publishStatusChecker.updateConfig({ githubToken: value });
+						}
+					});
+				text.inputEl.type = 'password';
+			});
 
 		new Setting(containerEl)
 			.setName('仓库地址')
@@ -217,13 +220,16 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('认证令牌')
 			.setDesc('AirScript Webhook 认证令牌')
-			.addText(text => text
-				.setPlaceholder('your-token')
-				.setValue(this.plugin.settings.airscriptToken)
-				.onChange(async (value) => {
-					this.plugin.settings.airscriptToken = value;
-					await this.plugin.saveSettings();
-				}));
+			.addText(text => {
+				text
+					.setPlaceholder('your-token')
+					.setValue(this.plugin.settings.airscriptToken)
+					.onChange(async (value) => {
+						this.plugin.settings.airscriptToken = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.type = 'password';
+			});
 	}
 
 	private renderPanelSection(containerEl: HTMLElement) {

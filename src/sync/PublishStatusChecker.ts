@@ -62,6 +62,9 @@ export class PublishStatusChecker {
 	private githubRepo: string = '';
 	private githubToken: string = '';
 	private githubBranch: string = '';
+	private publishIdIndex: Map<string, string> = new Map();
+	private indexTimestamp: number = 0;
+	private indexTTL = 300000;
 
 	constructor(app: App, options: {
 		localVuePressRoot: string;
@@ -149,6 +152,12 @@ export class PublishStatusChecker {
 
 	updatePathMap(entries: PathMapEntry[]) {
 		this.pathMapEntries = entries;
+		this.invalidatePublishIdIndex();
+	}
+
+	invalidatePublishIdIndex() {
+		this.publishIdIndex = new Map();
+		this.indexTimestamp = 0;
 	}
 
 	async checkFileStatus(file: TFile): Promise<FilePublishInfo> {
@@ -244,15 +253,16 @@ export class PublishStatusChecker {
 		if (!filePath) return;
 
 		try {
-			const { existsSync, utimesSync } = require('fs') as typeof import('fs');
+			const fs = require('fs/promises') as typeof import('fs/promises');
 			const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
 			const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
 
-			if (existsSync(targetPath)) {
+			try {
+				await fs.access(targetPath);
 				const now = new Date();
-				utimesSync(targetPath, now, now);
+				await fs.utimes(targetPath, now, now);
 				this.logger?.debug(TAG, `更新发布文件时间戳: ${targetPath}`);
-			}
+			} catch {}
 		} catch {}
 	}
 
@@ -260,13 +270,13 @@ export class PublishStatusChecker {
 		if (!this.localVuePressRoot) return 'unpublished';
 
 		try {
-			const { existsSync, statSync, readFileSync } = require('fs') as typeof import('fs');
+			const fs = require('fs/promises') as typeof import('fs/promises');
 			const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
 
 			if (publishId) {
 				const matchedPath = await this.findLocalFileByPublishId(publishId, sep);
 				if (matchedPath) {
-					const targetStat = statSync(matchedPath);
+					const targetStat = await fs.stat(matchedPath);
 					if (targetStat.mtimeMs >= file.stat.mtime) return 'published';
 					return 'outdated';
 				}
@@ -275,19 +285,43 @@ export class PublishStatusChecker {
 			if (!filePath) return 'unpublished';
 
 			const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
-			if (!existsSync(targetPath)) return 'unpublished';
-
-			const targetStat = statSync(targetPath);
-			if (targetStat.mtimeMs >= file.stat.mtime) return 'published';
-			return 'outdated';
+			try {
+				const targetStat = await fs.stat(targetPath);
+				if (targetStat.mtimeMs >= file.stat.mtime) return 'published';
+				return 'outdated';
+			} catch {
+				return 'unpublished';
+			}
 		} catch {
 			return 'unpublished';
 		}
 	}
 
 	private async findLocalFileByPublishId(publishId: string, sep: string): Promise<string | null> {
+		if (this.publishIdIndex.has(publishId) && Date.now() - this.indexTimestamp < this.indexTTL) {
+			const cached = this.publishIdIndex.get(publishId)!;
+			try {
+				const fs = require('fs/promises') as typeof import('fs/promises');
+				await fs.access(cached);
+				return cached;
+			} catch {
+				this.publishIdIndex.delete(publishId);
+			}
+		}
+
+		await this.rebuildPublishIdIndex(sep);
+		return this.publishIdIndex.get(publishId) || null;
+	}
+
+	private async rebuildPublishIdIndex(sep: string): Promise<void> {
+		if (Date.now() - this.indexTimestamp < this.indexTTL) return;
+
+		this.publishIdIndex = new Map();
+		this.indexTimestamp = Date.now();
+
 		try {
-			const { existsSync } = require('fs') as typeof import('fs');
+			const fs = require('fs/promises') as typeof import('fs/promises');
+			const pathMod = require('path') as typeof import('path');
 
 			const searchDirs = [this.publishRootPath, ''].filter(Boolean);
 			for (const subDir of searchDirs) {
@@ -295,40 +329,42 @@ export class PublishStatusChecker {
 					? `${this.localVuePressRoot}${sep}${this.vuepressDocsDir}${sep}${subDir.replace(/\//g, sep)}`
 					: `${this.localVuePressRoot}${sep}${this.vuepressDocsDir}`;
 
-				if (!existsSync(dirPath)) continue;
+				try {
+					await fs.access(dirPath);
+				} catch {
+					continue;
+				}
 
-				const result = this.searchDirForPublishId(dirPath, publishId);
-				if (result) return result;
+				await this.scanDirForPublishId(dirPath, fs, pathMod, 0);
 			}
 		} catch {}
-		return null;
 	}
 
-	private searchDirForPublishId(
-		dirPath: string, publishId: string,
-		depth: number = 0
-	): string | null {
-		if (depth > 10) return null;
+	private async scanDirForPublishId(
+		dirPath: string,
+		fs: typeof import('fs/promises'),
+		pathMod: typeof import('path'),
+		depth: number
+	): Promise<void> {
+		if (depth > 10) return;
 		try {
-			const { readdirSync, readFileSync } = require('fs') as typeof import('fs');
-			const pathMod = require('path') as typeof import('path');
-			const entries = readdirSync(dirPath, { withFileTypes: true });
+			const entries = await fs.readdir(dirPath, { withFileTypes: true });
 			for (const entry of entries) {
 				if (entry.name.startsWith('.')) continue;
 				const fullPath = pathMod.join(dirPath, entry.name);
 				if (entry.isDirectory()) {
-					const result = this.searchDirForPublishId(fullPath, publishId, depth + 1);
-					if (result) return result;
+					await this.scanDirForPublishId(fullPath, fs, pathMod, depth + 1);
 				} else if (entry.name.endsWith('.md')) {
 					try {
-						const content = readFileSync(fullPath, 'utf-8');
+						const content = await fs.readFile(fullPath, 'utf-8');
 						const id = extractPublishIdFromContent(content);
-						if (id === publishId) return fullPath;
+						if (id) {
+							this.publishIdIndex.set(id, fullPath);
+						}
 					} catch {}
 				}
 			}
 		} catch {}
-		return null;
 	}
 
 	private async checkSiteStatus(file: TFile, publishId: string | null): Promise<PublishStatus> {
@@ -397,12 +433,11 @@ export class PublishStatusChecker {
 		const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
 
 		try {
-			const { writeFileSync, mkdirSync, existsSync } = require('fs') as typeof import('fs');
+			const fs = require('fs/promises') as typeof import('fs/promises');
 			const dir = targetPath.substring(0, targetPath.lastIndexOf(sep));
-			if (!existsSync(dir)) {
-				mkdirSync(dir, { recursive: true });
-			}
-			writeFileSync(targetPath, content, 'utf-8');
+			await fs.mkdir(dir, { recursive: true });
+			await fs.writeFile(targetPath, content, 'utf-8');
+			this.invalidatePublishIdIndex();
 			this.logger?.info(TAG, `本地发布成功: ${targetPath}`);
 			return true;
 		} catch (e) {
@@ -468,12 +503,11 @@ export class PublishStatusChecker {
 		const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
 
 		try {
-			const { writeFileSync, mkdirSync, existsSync } = require('fs') as typeof import('fs');
+			const fs = require('fs/promises') as typeof import('fs/promises');
 			const dir = targetPath.substring(0, targetPath.lastIndexOf(sep));
-			if (!existsSync(dir)) {
-				mkdirSync(dir, { recursive: true });
-			}
-			writeFileSync(targetPath, content, 'utf-8');
+			await fs.mkdir(dir, { recursive: true });
+			await fs.writeFile(targetPath, content, 'utf-8');
+			this.invalidatePublishIdIndex();
 			this.logger?.info(TAG, `本地发布成功: ${targetPath}`);
 			return true;
 		} catch (e) {
@@ -488,11 +522,10 @@ export class PublishStatusChecker {
 		if (!filePath) return null;
 
 		try {
-			const { existsSync, readFileSync } = require('fs') as typeof import('fs');
+			const fs = require('fs/promises') as typeof import('fs/promises');
 			const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
 			const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
-			if (!existsSync(targetPath)) return null;
-			return readFileSync(targetPath, 'utf-8');
+			return await fs.readFile(targetPath, 'utf-8');
 		} catch {
 			return null;
 		}

@@ -627,7 +627,7 @@ class BiGraphNodeModal extends Modal {
 
 		if (this.node.siteUrl) {
 			actionsDiv.createEl('button', { text: '🌐 在站点中预览', cls: 'mod-cta' }).onclick = async () => {
-				await this.plugin.openSitePreview(this.node.siteUrl!);
+				await this.plugin.viewManager.openSitePreview(this.node.siteUrl!);
 				this.close();
 			};
 		}

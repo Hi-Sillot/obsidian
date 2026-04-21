@@ -10,6 +10,7 @@ export class BiGraphService {
 	private config: BiGraphConfig;
 	private pathMapEntries: PathMapEntry[] = [];
 	private vaultPathMap: Map<string, string> = new Map();
+	private suffixIndex: Map<string, string> = new Map();
 	private cachedData: BiGraphData | null = null;
 	private cacheTimestamp: number = 0;
 	private cacheTTL = 60000;
@@ -29,7 +30,24 @@ export class BiGraphService {
 	updatePathMap(entries: PathMapEntry[]) {
 		this.pathMapEntries = entries;
 		this.vaultPathMap = new Map(entries.map(e => [e.sourceRelPath, e.vuepressPath]));
+		this.rebuildSuffixIndex();
 		this.invalidateCache();
+	}
+
+	private rebuildSuffixIndex() {
+		this.suffixIndex = new Map();
+		for (const entry of this.pathMapEntries) {
+			const relPath = entry.sourceRelPath;
+			const cleanPath = relPath.replace(/\.md$/, '');
+			this.suffixIndex.set(cleanPath, entry.vuepressPath);
+			const parts = cleanPath.split('/');
+			for (let i = 1; i < parts.length; i++) {
+				const suffix = parts.slice(i).join('/');
+				if (!this.suffixIndex.has(suffix)) {
+					this.suffixIndex.set(suffix, entry.vuepressPath);
+				}
+			}
+		}
 	}
 
 	invalidateCache() {
@@ -214,14 +232,18 @@ export class BiGraphService {
 
 		let cleanPath = targetPath.replace(/\.md$/, '').replace(/#.*$/, '');
 
+		if (this.suffixIndex.has(cleanPath)) {
+			return this.suffixIndex.get(cleanPath)!;
+		}
+
+		if (this.vaultPathMap.has(cleanPath)) return this.vaultPathMap.get(cleanPath)!;
+		if (this.vaultPathMap.has(cleanPath + '.md')) return this.vaultPathMap.get(cleanPath + '.md')!;
+
 		for (const [permalink] of permalinkMap) {
 			if (permalink.endsWith(cleanPath) || permalink.endsWith('/' + cleanPath)) {
 				return permalink;
 			}
 		}
-
-		if (this.vaultPathMap.has(cleanPath)) return this.vaultPathMap.get(cleanPath)!;
-		if (this.vaultPathMap.has(cleanPath + '.md')) return this.vaultPathMap.get(cleanPath + '.md')!;
 
 		return null;
 	}

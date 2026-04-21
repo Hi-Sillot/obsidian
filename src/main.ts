@@ -12,16 +12,11 @@ import { PathMapper } from './sync/pathMapper';
 import { GitHubApi } from './sync/githubApi';
 import { SyncManager } from './sync/SyncManager';
 import { PublishModal } from './ui/PublishModal';
-import { PluginSyncView, VIEW_TYPE_PLUGIN_SYNC } from './ui/PluginSyncView';
-import { DevPanelView, VIEW_TYPE_DEV_PANEL } from './ui/DevPanelView';
 import { DocSyncPanel } from './ui/DocSyncPanel';
-import { PublishPanelView, VIEW_TYPE_PUBLISH } from './ui/PublishPanelView';
 import { PublishStatusChecker } from './sync/PublishStatusChecker';
 import { BridgeManager } from './bridge/BridgeManager';
 import { BridgeCssInjector } from './bridge/BridgeCssInjector';
 import { SyntaxRegistry } from './bridge/SyntaxRegistry';
-import { BiGraphView, VIEW_TYPE_BIGRAPH } from './bigraph/BiGraphView';
-import { BiGraphWebView, VIEW_TYPE_BIGRAPH_WEB } from './bigraph/BiGraphWebView';
 import { BiGraphService } from './bigraph/BiGraphService';
 import type { BiGraphConfig } from './bigraph/types';
 import { DEFAULT_BIGRAPH_CONFIG } from './bigraph/types';
@@ -30,6 +25,10 @@ import { DEFAULT_SETTINGS } from './types';
 import { Logger } from './utils/Logger';
 import { TaskTracker } from './utils/TaskTracker';
 import { PRCheckPoller } from './utils/PRCheckPoller';
+import { StatusBarManager } from './ui/StatusBarManager';
+import { ViewManager } from './ui/ViewManager';
+import { VIEW_TYPE_PUBLISH } from './ui/PublishPanelView';
+import { PublishPanelView } from './ui/PublishPanelView';
 
 export default class VuePressPublisherPlugin extends Plugin {
 	settings: PluginSettings;
@@ -45,6 +44,8 @@ export default class VuePressPublisherPlugin extends Plugin {
 	logger: Logger;
 	taskTracker: TaskTracker;
 	prCheckPoller: PRCheckPoller;
+	statusBarManager: StatusBarManager;
+	viewManager: ViewManager;
 
 	async onload() {
 		const loadData = await this.loadData() || {};
@@ -68,124 +69,8 @@ export default class VuePressPublisherPlugin extends Plugin {
 		}
 		this.prCheckPoller.onChange(() => this.savePRCheckPending());
 
-		const statusBarItem = this.addStatusBarItem();
-		statusBarItem.addClass('sillot-task-statusbar');
-		statusBarItem.style.display = 'none';
-		const statusBarIcon = statusBarItem.createSpan({ cls: 'sillot-task-statusbar-icon', text: '⏳' });
-		const statusBarCount = statusBarItem.createSpan({ cls: 'sillot-task-statusbar-count' });
-		const statusBarText = statusBarItem.createSpan({ cls: 'sillot-task-statusbar-text', text: '' });
-
-		let statusBarPopup: HTMLElement | null = null;
-		const closePopup = () => {
-			if (statusBarPopup) {
-				statusBarPopup.remove();
-				statusBarPopup = null;
-			}
-		};
-		const showTaskPopup = () => {
-			closePopup();
-			const tasks = this.taskTracker.getActiveTasks();
-			const pendingChecks = this.prCheckPoller.getPendingForPersistence();
-			const allResults = this.prCheckPoller.getAllResults();
-			const hasContent = tasks.length > 0 || pendingChecks.length > 0;
-			if (!hasContent) return;
-
-			statusBarPopup = document.body.createDiv({ cls: 'sillot-task-statusbar-popup' });
-			const rect = statusBarItem.getBoundingClientRect();
-			statusBarPopup.style.position = 'fixed';
-			statusBarPopup.style.bottom = `${window.innerHeight - rect.top + 4}px`;
-			statusBarPopup.style.right = `${window.innerWidth - rect.right}px`;
-
-			const header = statusBarPopup.createDiv({ cls: 'sillot-task-statusbar-popup-header' });
-			const headerParts: string[] = [];
-			if (tasks.length > 0) headerParts.push(`${tasks.length} 任务`);
-			if (pendingChecks.length > 0) headerParts.push(`${pendingChecks.length} PR检查`);
-			header.createSpan({ text: headerParts.join(' · ') });
-			const closeBtn = header.createEl('button', { text: '✕', cls: 'sillot-task-statusbar-popup-close' });
-			closeBtn.onclick = (e) => { e.stopPropagation(); closePopup(); };
-
-			for (const t of tasks) {
-				const row = statusBarPopup.createDiv({ cls: 'sillot-task-statusbar-popup-row' });
-				const bar = row.createDiv({ cls: 'sillot-task-statusbar-popup-bar' });
-				const fill = bar.createDiv({ cls: 'sillot-task-statusbar-popup-fill' });
-				if (t.progress < 0) {
-					bar.addClass('sillot-task-statusbar-popup-bar--indeterminate');
-				} else {
-					fill.style.width = `${Math.max(0, Math.min(100, t.progress))}%`;
-				}
-				row.createDiv({ cls: 'sillot-task-statusbar-popup-label', text: t.label }).title = t.label;
-			}
-
-			for (const info of pendingChecks) {
-				const result = allResults.get(String(info.prNumber));
-				const status = result?.status || 'pending';
-				const icon = status === 'pending' ? '⏳' : status === 'success' ? '✅' : status === 'warning' ? '⚠️' : status === 'failure' ? '❌' : '🔌';
-				const row = statusBarPopup.createDiv({ cls: 'sillot-task-statusbar-popup-row sillot-task-statusbar-popup-prcheck' });
-				row.createSpan({ text: icon, cls: 'sillot-task-statusbar-popup-prcheck-icon' });
-				const label = row.createDiv({ cls: 'sillot-task-statusbar-popup-label', text: `PR #${info.prNumber} ${status === 'pending' ? '构建检查中...' : '检查完成'}` });
-				label.title = `分支: ${info.branch}`;
-
-				if (status !== 'pending') {
-					row.addClass('sillot-task-statusbar-popup-prcheck--done');
-					row.onclick = () => {
-						closePopup();
-						const { PRCheckModal } = require('./ui/PRCheckModal');
-						const modal = new PRCheckModal(this.app, this, info.prNumber, info.branch);
-						modal.open();
-					};
-				}
-			}
-
-			const onClickOutside = (e: MouseEvent) => {
-				if (statusBarPopup && !statusBarPopup.contains(e.target as Node) && e.target !== statusBarItem) {
-					closePopup();
-					document.removeEventListener('click', onClickOutside);
-				}
-			};
-			setTimeout(() => document.addEventListener('click', onClickOutside), 0);
-		};
-
-		statusBarItem.onclick = () => {
-			if (statusBarPopup) {
-				closePopup();
-			} else {
-				showTaskPopup();
-			}
-		};
-
-		const updateStatusBar = () => {
-			const tasks = this.taskTracker.getActiveTasks();
-			const pendingChecks = this.prCheckPoller.getPendingForPersistence();
-			const hasActive = tasks.length > 0 || pendingChecks.length > 0;
-			if (!hasActive) {
-				statusBarItem.style.display = 'none';
-				closePopup();
-			} else {
-				statusBarItem.style.display = '';
-				const parts: string[] = [];
-				if (tasks.length > 0) {
-					const latest = tasks[tasks.length - 1];
-					parts.push(latest.label);
-				}
-				if (pendingChecks.length > 0) {
-					parts.push(`${pendingChecks.length}个PR检查中`);
-				}
-				statusBarText.textContent = parts.join(' · ');
-				if (tasks.length > 1 || pendingChecks.length > 0) {
-					statusBarCount.textContent = `${tasks.length + pendingChecks.length}`;
-					statusBarCount.style.display = 'inline';
-				} else {
-					statusBarCount.style.display = 'none';
-				}
-				statusBarItem.title = [
-					...tasks.map(t => t.label),
-					...pendingChecks.map(p => `PR #${p.prNumber} 构建检查中`),
-				].join('\n');
-				if (statusBarPopup) showTaskPopup();
-			}
-		};
-		this.taskTracker.onChange(updateStatusBar);
-		this.prCheckPoller.onChange(() => updateStatusBar());
+		this.statusBarManager = new StatusBarManager(this);
+		this.statusBarManager.bindTracker(this.taskTracker, this.prCheckPoller);
 
 		if (this.settings.clearTaskHistoryOnStartup) {
 			this.taskTracker.clearHistory();
@@ -241,7 +126,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 			id: 'open-publish-panel',
 			name: '打开发布管理面板',
 			callback: () => {
-				this.activatePublishPanel();
+				this.viewManager.activatePublishPanel();
 			},
 		});
 
@@ -286,7 +171,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 			id: 'open-sync-manager',
 			name: '打开同步管理面板',
 			callback: () => {
-				this.activateSyncView();
+				this.viewManager.activateSyncView();
 			},
 		});
 
@@ -294,7 +179,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 			id: 'open-dev-panel',
 			name: 'DevPanel: 开发调试面板',
 			callback: () => {
-				this.activateDevPanel();
+				this.viewManager.activateDevPanel();
 			},
 		});
 
@@ -333,32 +218,15 @@ export default class VuePressPublisherPlugin extends Plugin {
 		);
 
 		this.addRibbonIcon('upload-cloud', '发布管理', () => {
-			this.activatePublishPanel();
+			this.viewManager.activatePublishPanel();
 		});
 
 		this.addRibbonIcon('refresh-cw', '同步管理', () => {
-			this.activateSyncView();
+			this.viewManager.activateSyncView();
 		});
 
-		this.registerView(VIEW_TYPE_PLUGIN_SYNC, (leaf) => {
-			return new PluginSyncView(leaf, this);
-		});
-
-		this.registerView(VIEW_TYPE_DEV_PANEL, (leaf) => {
-			return new DevPanelView(leaf, this);
-		});
-
-		this.registerView(VIEW_TYPE_BIGRAPH, (leaf) => {
-			return new BiGraphView(leaf, this);
-		});
-
-		this.registerView(VIEW_TYPE_BIGRAPH_WEB, (leaf) => {
-			return new BiGraphWebView(leaf, this);
-		});
-
-		this.registerView(VIEW_TYPE_PUBLISH, (leaf) => {
-			return new PublishPanelView(leaf, this);
-		});
+		this.viewManager = new ViewManager(this);
+		this.viewManager.registerViews();
 
 		this.initBiGraphService();
 		this.initPublishStatusChecker();
@@ -366,17 +234,17 @@ export default class VuePressPublisherPlugin extends Plugin {
 		this.addCommand({
 			id: 'open-bigraph',
 			name: '打开站点图谱',
-			callback: () => this.activateBiGraphView(),
+			callback: () => this.viewManager.activateBiGraphView(),
 		});
 
 		this.addCommand({
 			id: 'open-bigraph-local',
 			name: '打开当前文件局部图谱',
-			callback: () => this.activateBiGraphLocalView(),
+			callback: () => this.viewManager.activateBiGraphLocalView(),
 		});
 
 		this.addRibbonIcon('git-branch', '站点图谱', () => {
-			this.activateBiGraphView();
+			this.viewManager.activateBiGraphView();
 		});
 
 		this.addSettingTab(new VuePressPublisherSettingTab(this.app, this));
@@ -392,10 +260,12 @@ export default class VuePressPublisherPlugin extends Plugin {
 			this.docSyncPanel.destroy();
 			this.docSyncPanel = null;
 		}
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PLUGIN_SYNC);
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_DEV_PANEL);
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_BIGRAPH);
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PUBLISH);
+		if (this.statusBarManager) {
+			this.statusBarManager.destroy();
+		}
+		if (this.viewManager) {
+			this.viewManager.detachAll();
+		}
 	}
 
 	initSyncManager() {
@@ -467,6 +337,10 @@ export default class VuePressPublisherPlugin extends Plugin {
 				assets.syntaxDescriptors.syntaxes,
 				assets.componentProps.components,
 			);
+		}
+
+		if (assets.inlineComponents) {
+			this.syntaxRegistry.loadInlineComponents(assets.inlineComponents);
 		}
 
 		if (assets.pathMap?.entries && this.biGraphService) {
@@ -564,61 +438,6 @@ export default class VuePressPublisherPlugin extends Plugin {
 		this.saveSettings();
 		if (this.publishStatusChecker) {
 			this.publishStatusChecker.updateConfig({ vaultSyncPaths: updated });
-		}
-	}
-
-	async activatePublishPanel() {
-		const { workspace } = this.app;
-		let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(VIEW_TYPE_PUBLISH)[0] || null;
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				leaf = rightLeaf;
-				await leaf.setViewState({ type: VIEW_TYPE_PUBLISH, active: true });
-			}
-		}
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
-	}
-
-	async activateBiGraphView() {
-		const { workspace } = this.app;
-		let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(VIEW_TYPE_BIGRAPH)[0] || null;
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				leaf = rightLeaf;
-				await leaf.setViewState({ type: VIEW_TYPE_BIGRAPH, active: true });
-			}
-		}
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
-	}
-
-	async activateBiGraphLocalView() {
-		await this.activateBiGraphView();
-		const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_BIGRAPH)[0];
-		if (leaf && leaf.view instanceof BiGraphView) {
-			leaf.view.focusCurrentFile();
-		}
-	}
-
-	async openSitePreview(url: string) {
-		const { workspace } = this.app;
-		let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(VIEW_TYPE_BIGRAPH_WEB)[0] || null;
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				leaf = rightLeaf;
-				await leaf.setViewState({ type: VIEW_TYPE_BIGRAPH_WEB, active: true });
-			}
-		}
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-			const view = leaf.view as BiGraphWebView;
-			await view.onLoadUrl(url);
 		}
 	}
 
@@ -799,36 +618,6 @@ export default class VuePressPublisherPlugin extends Plugin {
 		this.taskTracker.endTask(taskId, 'success');
 		this.logger.info('Sync', `全部同步完成`, `synced=${totalSynced}, conflicts=${totalConflicts}`);
 		new Notice(`全部同步完成：${totalSynced} 项，冲突 ${totalConflicts} 项`);
-	}
-
-	async activateSyncView() {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(VIEW_TYPE_PLUGIN_SYNC)[0];
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				leaf = rightLeaf;
-				await leaf.setViewState({ type: VIEW_TYPE_PLUGIN_SYNC, active: true });
-			}
-		}
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
-	}
-
-	async activateDevPanel() {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(VIEW_TYPE_DEV_PANEL)[0];
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				leaf = rightLeaf;
-				await leaf.setViewState({ type: VIEW_TYPE_DEV_PANEL, active: true });
-			}
-		}
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
 	}
 
 	async loadSettings() {
