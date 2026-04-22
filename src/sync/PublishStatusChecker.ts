@@ -617,6 +617,7 @@ export class PublishStatusChecker {
 
 	async computeDiff(file: TFile, source?: DiffCompareSource): Promise<DiffResult | null> {
 		this.logger?.debug(TAG, `计算diff: ${file.path}`, `source=${source || 'auto'}`);
+
 		const localContent = await this.app.vault.read(file);
 		let publishedContent: string | null = null;
 		let compareSource: DiffCompareSource = source || 'local';
@@ -633,13 +634,23 @@ export class PublishStatusChecker {
 				}
 			}
 		} else {
-			publishedContent = await this.getPublishedContent(file);
-			if (publishedContent === null) {
-				this.logger?.warn(TAG, `本地内容不可用，回退到云端: ${file.path}`);
+			const localExists = await this.checkLocalPublishedFileExists(file);
+			if (!localExists) {
+				this.logger?.debug(TAG, `本地发布文件不存在，跳过直接获取: ${file.path}`);
 				publishedContent = await this.getSitePublishedContent(file);
 				if (publishedContent !== null) {
 					compareSource = 'site';
-					fallback = true;
+					fallback = false;
+				}
+			} else {
+				publishedContent = await this.getPublishedContent(file);
+				if (publishedContent === null) {
+					this.logger?.warn(TAG, `本地内容不可用，尝试云端: ${file.path}`);
+					publishedContent = await this.getSitePublishedContent(file);
+					if (publishedContent !== null) {
+						compareSource = 'site';
+						fallback = true;
+					}
 				}
 			}
 		}
@@ -660,6 +671,22 @@ export class PublishStatusChecker {
 			publishedContent,
 			fallback,
 		};
+	}
+
+	private async checkLocalPublishedFileExists(file: TFile): Promise<boolean> {
+		if (!Platform.isDesktop || !this.localVuePressRoot) return false;
+
+		try {
+			const fs = require('fs/promises') as typeof import('fs/promises');
+			const filePath = this.resolveFilePath(file);
+			if (!filePath) return false;
+			const sep = this.localVuePressRoot.includes('\\') ? '\\' : '/';
+			const targetPath = `${this.localVuePressRoot}${sep}${filePath.replace(/\//g, sep)}`;
+			await fs.access(targetPath);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	private lcsDiff(oldLines: string[], newLines: string[]): Omit<DiffResult, 'compareSource' | 'publishedContent' | 'fallback'> {

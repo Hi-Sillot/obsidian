@@ -10,12 +10,14 @@ export interface PluginSettings {
 	docSyncPanelState: 'minimized' | 'default' | 'expanded';
 	localVuePressRoot: string;
 	siteDomain: string;
+	deployBranch: string;
 	vaultSyncPaths: string[];
 	logLevel: 'debug' | 'info' | 'warn' | 'error' | 'none';
 	logFilePath: string;
 	publishCreatePR: boolean;
 	publishBranchPrefix: string;
 	clearTaskHistoryOnStartup: boolean;
+	recentPublishPaths: string[];
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -30,12 +32,14 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	docSyncPanelState: 'default',
 	localVuePressRoot: '',
 	siteDomain: '',
+	deployBranch: 'gh-pages',
 	vaultSyncPaths: ['/'],
 	logLevel: 'info',
 	logFilePath: '.obsidian/plugins/sillot/log/sillot.log',
 	publishCreatePR: true,
 	publishBranchPrefix: 'publish/',
 	clearTaskHistoryOnStartup: true,
+	recentPublishPaths: [] as string[],
 };
 
 export interface PluginSyncInfo {
@@ -87,6 +91,7 @@ export interface PublishResult {
 	commitMessage: string;
 	branch: string;
 	createPR: boolean;
+	customPublishPath?: string;
 }
 
 export interface KDocsResponse<T = any> {
@@ -148,4 +153,40 @@ export interface DiffResult {
 	compareSource: DiffCompareSource;
 	publishedContent: string;
 	fallback: boolean;
+}
+
+export interface DocTreeNode {
+	path: string;
+	name: string;
+	type: 'file' | 'directory';
+	children?: DocTreeNode[];
+	lastModified?: string;
+	size?: number;
+}
+
+export interface PullSource {
+	type: 'site' | 'github';
+	baseUrl: string;
+	branch?: string;
+	docsDir?: string;
+}
+
+export interface PullDocumentRequest {
+	cloudPath: string;
+	localSavePath: string;
+	source: PullSource;
+}
+
+export interface PullDocumentResult {
+	success: boolean;
+	cloudPath: string;
+	localPath: string;
+	existed: boolean;
+	message: string;
+}
+
+export interface LocalExistenceResult {
+	exists: boolean;
+	localPath: string | null;
+	localMtime: number | null;
 }

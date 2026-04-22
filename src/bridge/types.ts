@@ -121,6 +121,15 @@ export interface InlineComponentData {
 	cedossMap: Record<string, string>;
 }
 
+export interface AssetMapData {
+	version: string;
+	buildTime: string;
+	count: number;
+	sourceCount: number;
+	map: Record<string, string>;
+	sourceFiles: { name: string; relativePath: string }[];
+}
+
 export interface BridgeAssets {
 	version: BridgeVersion | null;
 	pathMap: PathMapData | null;
@@ -131,6 +140,26 @@ export interface BridgeAssets {
 	permalinkIndex: PermalinkIndexData | null;
 	publishStatus: PublishStatusData | null;
 	inlineComponents: InlineComponentData | null;
+	vuepressConfigBundle: VuePressConfigBundle | null;
+	assetMap: AssetMapData | null;
+}
+
+export interface VuePressConfigBundle {
+	version: string;
+	buildTime: string;
+	docsRepo: string;
+	docsBranch: string;
+	vuepressDir: string;
+	files: VuePressConfigFile[];
+}
+
+export interface VuePressConfigFile {
+	name: string;
+	path: string;
+	type: 'file' | 'dir';
+	size: number;
+	content?: string;
+	children?: VuePressConfigFile[];
 }
 
 export const DEFAULT_BRIDGE_ASSETS: BridgeAssets = {
@@ -143,4 +172,6 @@ export const DEFAULT_BRIDGE_ASSETS: BridgeAssets = {
 	permalinkIndex: null,
 	publishStatus: null,
 	inlineComponents: null,
+	vuepressConfigBundle: null,
+	assetMap: null,
 };

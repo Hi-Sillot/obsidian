@@ -3,6 +3,7 @@ import type VuePressPublisherPlugin from '../main';
 import type { ParsedSyncBlock, PublishStatus, FilePublishInfo, DiffResult, DiffCompareSource } from '../types';
 import type { TaskTracker } from '../utils/TaskTracker';
 import { generatePublishId, setPublishIdInContent } from '../sync/PublishStatusChecker';
+import { MoveDocumentModal } from './MoveDocumentModal';
 
 const PANEL_CLASS = 'sillot-doc-sync-panel';
 const PANEL_CONTAINER_CLASS = 'sillot-doc-sync-panel-container';
@@ -645,7 +646,10 @@ export class DocSyncPanel {
 		if (info.vuepressPath) {
 			const pathRow = tbody.createEl('tr');
 			pathRow.createEl('td', { text: '路径', cls: `${PANEL_CLASS}-publish-info-label` });
-			pathRow.createEl('td', { text: info.vuepressPath, cls: `${PANEL_CLASS}-publish-info-path` });
+			const pathCell = pathRow.createEl('td');
+			pathCell.createEl('span', { text: info.vuepressPath, cls: `${PANEL_CLASS}-publish-info-path` });
+			const moveBtn = pathCell.createEl('button', { text: '✏️', cls: `${PANEL_CLASS}-publish-path-edit-btn`, attr: { title: '修改路径' } });
+			moveBtn.onclick = () => this.moveDocument();
 		}
 
 		const idRow = tbody.createEl('tr');
@@ -1042,6 +1046,27 @@ export class DocSyncPanel {
 				this.plugin.taskTracker.endTask(taskId, 'failed', e.message);
 			}
 		}
+	}
+
+	private moveDocument() {
+		if (!this.currentFile || !this.publishInfo?.vuepressPath) {
+			new Notice('无法获取文档路径信息');
+			return;
+		}
+
+		const oldPath = this.publishInfo.vuepressPath;
+		const docsDir = this.plugin.settings.vuepressDocsDir || 'docs';
+
+		new MoveDocumentModal(
+			this.plugin.app,
+			this.plugin,
+			oldPath,
+			docsDir,
+			(result) => {
+				new Notice(`文档路径已修改为: ${result.newPath}`);
+				this.renderPanel();
+			}
+		).open();
 	}
 
 	private openBlockForEdit(block: ParsedSyncBlock) {

@@ -33,6 +33,10 @@ export class GitHubApi {
 		this.token = token;
 	}
 
+	getRepo(): string {
+		return this.repo;
+	}
+
 	private async request(params: RequestUrlParam): Promise<any> {
 		const maxRetries = 3;
 		let lastError: Error | null = null;
@@ -211,7 +215,7 @@ export class GitHubApi {
 		}
 	}
 
-	private async createPullRequest(params: { title: string; body: string; head: string; base: string }): Promise<{ html_url: string; number: number }> {
+	async createPullRequest(params: { title: string; body: string; head: string; base: string }): Promise<{ html_url: string; number: number }> {
 		return this.request({
 			url: this.ghUrl('/pulls'),
 			method: 'POST',
@@ -304,6 +308,53 @@ export class GitHubApi {
 			baseBranch: branch,
 			targetBranch: branch,
 			createPR: false,
+		});
+	}
+
+	async listDirectory(path: string, branch?: string): Promise<{ name: string; path: string; type: 'file' | 'dir'; size: number; lastModified: string }[]> {
+		const ref = branch || await this.getDefaultBranch();
+		const data = await this.request({
+			url: this.ghUrl(`/contents/${path}?ref=${ref}`),
+			headers: this.defaultHeaders(),
+		});
+
+		if (!Array.isArray(data)) {
+			return [];
+		}
+
+		return data.map((item: any) => ({
+			name: item.name,
+			path: item.path,
+			type: item.type === 'dir' ? 'dir' : 'file',
+			size: item.size || 0,
+			lastModified: item.last_modified || item.commit?.committer?.date || '',
+		}));
+	}
+
+	async getFileSha(path: string, branch?: string): Promise<string | null> {
+		try {
+			const ref = branch || await this.getDefaultBranch();
+			const data = await this.request({
+				url: this.ghUrl(`/contents/${path}?ref=${ref}`),
+				headers: this.defaultHeaders(),
+			});
+			return data.sha || null;
+		} catch {
+			return null;
+		}
+	}
+
+	async deleteFile(path: string, sha: string, commitMessage: string, branch?: string): Promise<void> {
+		const ref = branch || await this.getDefaultBranch();
+		await this.request({
+			url: this.ghUrl(`/contents/${path}`),
+			method: 'DELETE',
+			headers: this.defaultHeaders(),
+			body: JSON.stringify({
+				message: commitMessage,
+				sha,
+				branch: ref,
+			}),
 		});
 	}
 }

@@ -28,7 +28,11 @@ import { PRCheckPoller } from './utils/PRCheckPoller';
 import { StatusBarManager } from './ui/StatusBarManager';
 import { ViewManager } from './ui/ViewManager';
 import { VIEW_TYPE_PUBLISH } from './ui/PublishPanelView';
+import { ConfigEditorModal } from './ui/ConfigEditorModal';
+import { MoveDocumentModal } from './ui/MoveDocumentModal';
 import { PublishPanelView } from './ui/PublishPanelView';
+import { DocumentTreeService } from './sync/DocumentTreeService';
+import { PullDocumentModal } from './ui/PullDocumentModal';
 
 export default class VuePressPublisherPlugin extends Plugin {
 	settings: PluginSettings;
@@ -46,6 +50,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 	prCheckPoller: PRCheckPoller;
 	statusBarManager: StatusBarManager;
 	viewManager: ViewManager;
+	documentTreeService: DocumentTreeService | null = null;
 
 	async onload() {
 		const loadData = await this.loadData() || {};
@@ -84,6 +89,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 			githubRepo: this.settings.githubRepo,
 			githubToken: this.settings.githubToken,
 			githubBranch: this.settings.defaultBranch,
+			deployBranch: this.settings.deployBranch,
 			onAssetsLoaded: (assets) => this.onBridgeAssetsLoaded(assets),
 			logger: this.logger,
 		});
@@ -91,6 +97,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 		this.syntaxRegistry.registerAll();
 
 		this.initSyncManager();
+		this.initDocumentTreeService();
 
 		await Promise.all([
 			this.loadVuePressStyles(),
@@ -176,6 +183,14 @@ export default class VuePressPublisherPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'pull-from-cloud',
+			name: '从云端拉取文档',
+			callback: () => {
+				this.openPullDocumentModal();
+			},
+		});
+
+		this.addCommand({
 			id: 'open-dev-panel',
 			name: 'DevPanel: 开发调试面板',
 			callback: () => {
@@ -225,6 +240,10 @@ export default class VuePressPublisherPlugin extends Plugin {
 			this.viewManager.activateSyncView();
 		});
 
+		this.addRibbonIcon('download', '从云端拉取', () => {
+			this.openPullDocumentModal();
+		});
+
 		this.viewManager = new ViewManager(this);
 		this.viewManager.registerViews();
 
@@ -245,6 +264,20 @@ export default class VuePressPublisherPlugin extends Plugin {
 
 		this.addRibbonIcon('git-branch', '站点图谱', () => {
 			this.viewManager.activateBiGraphView();
+		});
+
+		this.addCommand({
+			id: 'edit-site-config',
+			name: '编辑站点配置',
+			callback: () => {
+				if (!this.settings.githubToken || !this.settings.githubRepo) {
+					new Notice('请先在插件设置中配置 GitHub Token 和仓库');
+					return;
+				}
+				new ConfigEditorModal(this.app, this, () => {
+					this.logger.info('Config', '站点配置已更新');
+				}).open();
+			},
 		});
 
 		this.addSettingTab(new VuePressPublisherSettingTab(this.app, this));
@@ -277,6 +310,34 @@ export default class VuePressPublisherPlugin extends Plugin {
 			this.syncManager = null;
 			this.logger.debug('SyncManager', '未配置，跳过初始化');
 		}
+	}
+
+	initDocumentTreeService() {
+		if (!this.settings.githubRepo || !this.settings.githubToken) {
+			this.documentTreeService = null;
+			this.logger.debug('DocumentTreeService', '未配置 GitHub，跳过初始化');
+			return;
+		}
+		const githubApi = new GitHubApi(this.settings.githubRepo, this.settings.githubToken);
+		const pathMapper = new PathMapper({ docsDir: this.settings.vuepressDocsDir, publishRootPath: this.settings.publishRootPath });
+		this.documentTreeService = new DocumentTreeService(this.app.vault, githubApi, pathMapper);
+		this.logger.info('DocumentTreeService', '已初始化');
+	}
+
+	openPullDocumentModal() {
+		if (!this.documentTreeService) {
+			new Notice('请先在插件设置中配置 GitHub Token 和仓库');
+			return;
+		}
+		const vaultRoot = this.app.vault.getRoot().name;
+		const modal = new PullDocumentModal(this.app, this.documentTreeService, {
+			vaultRoot,
+			githubRepo: this.settings.githubRepo,
+			githubBranch: this.settings.defaultBranch,
+			siteDomain: this.settings.siteDomain,
+			docsDir: this.settings.vuepressDocsDir,
+		});
+		modal.open();
 	}
 
 	async loadVuePressStyles() {
@@ -349,6 +410,15 @@ export default class VuePressPublisherPlugin extends Plugin {
 
 		if (assets.pathMap?.entries && this.publishStatusChecker) {
 			this.publishStatusChecker.updatePathMap(assets.pathMap.entries);
+		}
+
+		if (this.documentTreeService) {
+			this.documentTreeService.setSiteIndex({
+				permalinkIndex: assets.permalinkIndex || null,
+				pathMap: assets.pathMap || null,
+				siteDomain: this.settings.siteDomain,
+				docsDir: this.settings.vuepressDocsDir,
+			});
 		}
 	}
 
@@ -423,6 +493,15 @@ export default class VuePressPublisherPlugin extends Plugin {
 		}
 	}
 
+	addRecentPublishPath(path: string) {
+		const normalized = path.replace(/^\/+|\/+$/, '');
+		const recent = this.settings.recentPublishPaths || [];
+		const filtered = recent.filter((p: string) => p !== normalized);
+		filtered.unshift(normalized);
+		this.settings.recentPublishPaths = filtered.slice(0, 10);
+		this.saveSettings();
+	}
+
 	ensureFileInSyncPaths(file: TFile) {
 		const paths = this.settings.vaultSyncPaths;
 		if (paths.includes('/')) return;
@@ -450,7 +529,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 
 		this.logger.info('Publish', `开始发布: ${file.path}`);
 
-		new PublishModal(this.app, defaultBranch, publishBranchPrefix, publishCreatePR, async (result: PublishResult) => {
+		new PublishModal(this.app, defaultBranch, publishBranchPrefix, publishCreatePR, this.settings.publishRootPath, this.settings.recentPublishPaths, async (result: PublishResult) => {
 			const taskId = `publish-file-${Date.now()}`;
 			this.taskTracker.startTask(taskId, `发布 ${file.name}...`);
 			const notice = new Notice('正在收集文件...', 0);
@@ -462,14 +541,14 @@ export default class VuePressPublisherPlugin extends Plugin {
 				const mapper = new PathMapper({ docsDir: vuepressDocsDir, publishRootPath: this.settings.publishRootPath });
 
 				const mdContent = await this.app.vault.read(collected.md);
-				const mdTargetPath = mapper.mapMarkdownPath(collected.md.path);
+				const mdTargetPath = mapper.mapMarkdownPath(collected.md.path, result.customPublishPath);
 				const publishFiles: { path: string; content: string }[] = [
 					{ path: mdTargetPath, content: btoa(unescape(encodeURIComponent(mdContent))) },
 				];
 
 				for (const asset of collected.assets) {
 					const assetData = await this.app.vault.readBinary(asset);
-					const assetTargetPath = mapper.mapAssetPath(asset.path);
+					const assetTargetPath = mapper.mapAssetPath(asset.path, result.customPublishPath);
 					let binary = '';
 					const bytes = new Uint8Array(assetData);
 					for (let i = 0; i < bytes.length; i++) {
@@ -550,6 +629,9 @@ export default class VuePressPublisherPlugin extends Plugin {
 				}
 				this.ensureFileInSyncPaths(file);
 				this.cleanVaultSyncPaths();
+				if (result.customPublishPath) {
+					this.addRecentPublishPath(result.customPublishPath);
+				}
 				this.refreshDocSyncPanel();
 				this.refreshPublishPanel();
 			} catch (error) {

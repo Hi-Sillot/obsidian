@@ -7,17 +7,19 @@ export class PathMapper {
 		this.publishRootPath = (config.publishRootPath || '').replace(/^\/+|\/+$/g, '');
 	}
 
-	mapMarkdownPath(obsidianPath: string): string {
-		if (this.publishRootPath) {
-			return `${this.vuepressRoot}/${this.publishRootPath}/${obsidianPath}`;
+	mapMarkdownPath(obsidianPath: string, customPath?: string): string {
+		const effectiveRoot = customPath || this.publishRootPath;
+		if (effectiveRoot) {
+			return `${this.vuepressRoot}/${effectiveRoot}/${obsidianPath}`;
 		}
 		return `${this.vuepressRoot}/${obsidianPath}`;
 	}
 
-	mapAssetPath(obsidianAssetPath: string): string {
+	mapAssetPath(obsidianAssetPath: string, customPath?: string): string {
 		const filename = obsidianAssetPath.split('/').pop() || 'unknown';
-		if (this.publishRootPath) {
-			return `${this.vuepressRoot}/${this.publishRootPath}/.vuepress/public/images/${filename}`;
+		const effectiveRoot = customPath || this.publishRootPath;
+		if (effectiveRoot) {
+			return `${this.vuepressRoot}/${effectiveRoot}/.vuepress/public/images/${filename}`;
 		}
 		return `${this.vuepressRoot}/.vuepress/public/images/${filename}`;
 	}

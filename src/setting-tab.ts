@@ -201,6 +201,18 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 					this.plugin.refreshPublishPanel();
 					this.plugin.refreshDocSyncPanel();
 				}));
+
+		new Setting(containerEl)
+			.setName('发布分支')
+			.setDesc('GitHub 仓库中存放构建后站点的分支（如 gh-pages），用于拉取 Bridge 产物')
+			.addText(text => text
+				.setPlaceholder('gh-pages')
+				.setValue(this.plugin.settings.deployBranch || '')
+				.onChange(async (value) => {
+					this.plugin.settings.deployBranch = value;
+					await this.plugin.saveSettings();
+					this.plugin.bridgeManager.updateConfig({ deployBranch: value });
+				}));
 	}
 
 	private renderSyncSection(containerEl: HTMLElement) {

@@ -16,9 +16,11 @@ const BRIDGE_FILES = [
 	'permalink-index.json',
 	'publish-status.json',
 	'inline-components.json',
+	'vuepress-config-bundle.json',
+	'asset-map.json',
 ] as const;
 
-type AssetKey = 'version' | 'pathMap' | 'syntaxDescriptors' | 'componentProps' | 'authors' | 'bridgeCss' | 'permalinkIndex' | 'publishStatus' | 'inlineComponents';
+type AssetKey = 'version' | 'pathMap' | 'syntaxDescriptors' | 'componentProps' | 'authors' | 'bridgeCss' | 'permalinkIndex' | 'publishStatus' | 'inlineComponents' | 'vuepressConfigBundle' | 'assetMap';
 
 const ASSET_FILE_MAP: { file: string; key: AssetKey; isText: boolean }[] = [
 	{ file: 'version.json', key: 'version', isText: false },
@@ -30,6 +32,8 @@ const ASSET_FILE_MAP: { file: string; key: AssetKey; isText: boolean }[] = [
 	{ file: 'permalink-index.json', key: 'permalinkIndex', isText: false },
 	{ file: 'publish-status.json', key: 'publishStatus', isText: false },
 	{ file: 'inline-components.json', key: 'inlineComponents', isText: false },
+	{ file: 'vuepress-config-bundle.json', key: 'vuepressConfigBundle', isText: false },
+	{ file: 'asset-map.json', key: 'assetMap', isText: false },
 ];
 
 export class BridgeManager {
@@ -40,6 +44,7 @@ export class BridgeManager {
 	private githubRepo: string = '';
 	private githubToken: string = '';
 	private githubBranch: string = '';
+	private deployBranch: string = '';
 	private onAssetsLoaded?: (assets: BridgeAssets) => void;
 	private logger: Logger | null;
 	private cacheTimestamp: number = 0;
@@ -51,6 +56,7 @@ export class BridgeManager {
 		githubRepo?: string;
 		githubToken?: string;
 		githubBranch?: string;
+		deployBranch?: string;
 		onAssetsLoaded?: (assets: BridgeAssets) => void;
 		logger?: Logger;
 	}) {
@@ -60,6 +66,7 @@ export class BridgeManager {
 		this.githubRepo = options.githubRepo || '';
 		this.githubToken = options.githubToken || '';
 		this.githubBranch = options.githubBranch || '';
+		this.deployBranch = options.deployBranch || 'gh-pages';
 		this.onAssetsLoaded = options.onAssetsLoaded;
 		this.logger = options.logger || null;
 	}
@@ -70,12 +77,14 @@ export class BridgeManager {
 		githubRepo?: string;
 		githubToken?: string;
 		githubBranch?: string;
+		deployBranch?: string;
 	}) {
 		if (options.localBridgePath !== undefined) this.localBridgePath = options.localBridgePath;
 		if (options.siteDomain !== undefined) this.siteDomain = options.siteDomain;
 		if (options.githubRepo !== undefined) this.githubRepo = options.githubRepo;
 		if (options.githubToken !== undefined) this.githubToken = options.githubToken;
 		if (options.githubBranch !== undefined) this.githubBranch = options.githubBranch;
+		if (options.deployBranch !== undefined) this.deployBranch = options.deployBranch;
 	}
 
 	getAssets(): BridgeAssets {
@@ -318,8 +327,8 @@ export class BridgeManager {
 			throw new Error('未配置 GitHub 仓库或 Token');
 		}
 
-		const branch = this.githubBranch || 'main';
-		const bridgePath = 'docs/.vuepress/dist/obsidian-bridge';
+		const branch = this.deployBranch || 'gh-pages';
+		const bridgePath = 'obsidian-bridge';
 
 		this.logger?.info(TAG, `从 GitHub 加载 Bridge 产物: ${this.githubRepo}:${branch}/${bridgePath}`);
 
@@ -397,5 +406,35 @@ export class BridgeManager {
 		if (!this.assets.pathMap?.entries) return null;
 		const entry = this.assets.pathMap.entries.find(e => e.vuepressPath === vuepressPath);
 		return entry?.sourceRelPath || null;
+	}
+
+	getVuePressConfigBundle() {
+		return this.assets.vuepressConfigBundle;
+	}
+
+	getAssetMap() {
+		return this.assets.assetMap;
+	}
+
+	getVuePressConfigFiles(): Array<{ path: string; content: string | null }> {
+		const bundle = this.assets.vuepressConfigBundle;
+		if (!bundle?.files) return [];
+
+		const result: Array<{ path: string; content: string | null }> = [];
+		const files = bundle.files;
+
+		function flattenFiles(files: Array<{ type: string; path: string; content?: string; children?: typeof files }>) {
+			for (const file of files) {
+				if (file.type === 'file') {
+					result.push({ path: file.path, content: file.content || null });
+				}
+				if (file.children) {
+					flattenFiles(file.children);
+				}
+			}
+		}
+
+		flattenFiles(files);
+		return result;
 	}
 }
