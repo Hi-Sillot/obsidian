@@ -48,7 +48,7 @@ jobs:
           echo "Creating release with tag: ${{ inputs.version }}"
           gh release create "${{ inputs.version }}" \
             --title "Release ${{ inputs.version }}" \
-            --notes-path CHANGELOG.md \
+            --notes-file CHANGELOG.md \
             main.js main.css manifest.json styles/styles.css
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
