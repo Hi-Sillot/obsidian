@@ -1,7 +1,9 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, Notice, Platform, PluginSettingTab, Setting } from 'obsidian';
 import VuePressPublisherPlugin from './main';
 import { SyncPathTree } from './ui/SyncPathTree';
+import { UpdateInstallModal } from './ui/UpdateInstallModal';
 import type { PluginSettings } from './types';
+import type { UpdateCheckResult } from './utils/UpdateChecker';
 
 export class VuePressPublisherSettingTab extends PluginSettingTab {
 	plugin: VuePressPublisherPlugin;
@@ -36,12 +38,150 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 			text: '发布时插件会自动处理所有自定义组件，无需手动转换格式。'
 		});
 
+		this.renderUpdateSection(containerEl);
 		this.renderGitHubSection(containerEl);
 		this.renderVuePressSection(containerEl);
 		this.renderSyncSection(containerEl);
 		this.renderPanelSection(containerEl);
 		this.renderSyncPathsSection(containerEl);
 		this.renderDevSection(containerEl);
+	}
+
+	private renderUpdateSection(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: '更新' });
+
+		const versionEl = containerEl.createDiv({ cls: 'sillot-version-info' });
+		versionEl.createSpan({ text: '当前版本: ' });
+		versionEl.createEl('strong', { text: this.plugin.manifest.version });
+
+		const updateChannelSetting = new Setting(containerEl)
+			.setName('更新渠道')
+			.setDesc('选择插件更新检查的来源')
+			.addDropdown(dropdown => dropdown
+				.addOption('github', 'GitHub')
+				.addOption('github-dev', 'GitHub Dev (预发布)')
+				.addOption('local', '本地')
+				.setValue(this.plugin.settings.updateChannel)
+				.onChange(async (value: string) => {
+					this.plugin.settings.updateChannel = value as 'github' | 'github-dev' | 'local';
+					await this.plugin.saveSettings();
+					this.plugin.updateChecker.updateConfig({ updateChannel: value as 'github' | 'github-dev' | 'local' });
+				}));
+
+		const updateRepoSetting = new Setting(containerEl)
+			.setName('更新仓库')
+			.setDesc('GitHub 仓库地址，格式：owner/repo')
+			.addText(text => text
+				.setPlaceholder('Hi-Sillot/obsidian')
+				.setValue(this.plugin.settings.updateRepo)
+				.onChange(async (value) => {
+					this.plugin.settings.updateRepo = value;
+					await this.plugin.saveSettings();
+					this.plugin.updateChecker.updateConfig({ updateRepo: value });
+				}));
+
+		new Setting(containerEl)
+			.setName('检查更新')
+			.setDesc('')
+			.addButton(button => {
+				let checking = false;
+				button.setButtonText('检查更新');
+				button.setCta();
+				button.onClick(async () => {
+					if (checking) return;
+					checking = true;
+					button.setDisabled(true);
+					button.setButtonText('检查中...');
+
+					try {
+						if (this.plugin.settings.updateChannel === 'local') {
+							const input = document.createElement('input');
+							input.type = 'file';
+							input.accept = '.zip,.js,.json';
+							input.onchange = async () => {
+								const file = input.files?.[0];
+								if (!file) return;
+
+								const fileName = file.name;
+								const isZip = fileName.endsWith('.zip');
+								const isJs = fileName.endsWith('.js');
+								const isJson = fileName.endsWith('.json');
+
+								try {
+									if (isZip) {
+										const arrayBuffer = await file.arrayBuffer();
+										const jszip = await import('jszip');
+										const zip = await jszip.loadAsync(arrayBuffer);
+										const entries: { name: string; file: any }[] = [];
+										zip.forEach((path, fileEntry) => {
+											if (!fileEntry.dir) entries.push({ name: path, file: fileEntry });
+										});
+
+										const mainJsEntry = entries.find(e => e.name === 'main.js');
+										const manifestEntry = entries.find(e => e.name === 'manifest.json');
+										const mainCssEntry = entries.find(e => e.name === 'main.css');
+										const stylesEntry = entries.find(e => e.name.startsWith('styles/') && e.name.endsWith('.css'));
+										const bridgeCacheEntries = entries.filter(e => e.name.startsWith('bridge-cache/'));
+
+										if (mainJsEntry || manifestEntry || mainCssEntry || stylesEntry || bridgeCacheEntries.length > 0) {
+											const installModal = new UpdateInstallModal(this.app, this.plugin, arrayBuffer);
+											installModal.setOnClose(() => {
+												new Notice('插件更新已安装，请重启 Obsidian', 5000);
+											});
+											installModal.open();
+										} else {
+											new Notice(`未在压缩包中找到有效的插件文件`, 4000);
+										}
+									} else if (isJs || isJson) {
+										const text = await file.text();
+										if (isJson) {
+											try {
+												JSON.parse(text);
+												new Notice(`已读取 ${fileName}，包含有效的 JSON 配置。`, 3000);
+											} catch {
+												new Notice(`${fileName} 不是有效的 JSON 文件。`, 3000);
+											}
+										} else {
+											new Notice(`已读取 ${fileName}（${(text.length / 1024).toFixed(1)} KB），请手动替换插件文件。`, 4000);
+										}
+									} else {
+										new Notice('不支持的文件格式，请选择 .zip、.js 或 .json 文件。', 3000);
+									}
+								} catch (err: any) {
+									new Notice(`读取文件失败: ${err.message}`, 4000);
+								}
+							};
+							input.click();
+						} else {
+							const result = await this.plugin.updateChecker.checkForUpdates();
+							this.plugin.settings.lastCheckTime = Date.now();
+							await this.plugin.saveSettings();
+
+							if (result.error) {
+								new Notice(`检查更新失败: ${result.error}`, 4000);
+							} else if (result.hasUpdate) {
+								new Notice(`发现新版本 ${result.latestVersion}！点击查看发布页。`, 6000);
+							} else {
+								new Notice(`当前版本 ${result.currentVersion} 已是最新`, 3000);
+							}
+						}
+					} catch (err: any) {
+						new Notice(`检查更新失败: ${err.message}`, 4000);
+					} finally {
+						checking = false;
+						button.setDisabled(false);
+						button.setButtonText('检查更新');
+					}
+				});
+			});
+
+		if (this.plugin.settings.lastCheckTime) {
+			const lastCheckEl = containerEl.createDiv({ cls: 'sillot-last-check' });
+			const date = new Date(this.plugin.settings.lastCheckTime);
+			lastCheckEl.createSpan({ text: `上次检查: ${date.toLocaleString()}` });
+		}
+
+		this.renderPackPluginSection(containerEl);
 	}
 
 	private renderGitHubSection(containerEl: HTMLElement) {
@@ -78,7 +218,7 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('仓库地址')
-			.setDesc('格式：owner/repo，如 Sillot/sillot')
+			.setDesc('格式：owner/repo，如 Hi-Sillot/obsidian')
 			.addText(text => text
 				.setPlaceholder('owner/repo')
 				.setValue(this.plugin.settings.githubRepo)
@@ -311,6 +451,123 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 					this.plugin.settings.logFilePath = value;
 					await this.plugin.saveSettings();
 				}));
+	}
+
+	private renderPackPluginSection(containerEl: HTMLElement) {
+		if (Platform.isMobile) return;
+
+		containerEl.createEl('h3', { text: '打包插件' });
+
+		let versionInputEl: HTMLInputElement | null = null;
+		new Setting(containerEl)
+			.setName('自定义版本号')
+			.setDesc('留空则使用当前版本号（当前：' + this.plugin.manifest.version + '）')
+			.addText(text => {
+				text.inputEl.classList.add('sillot-pack-version-input');
+				text.inputEl.placeholder = this.plugin.manifest.version;
+				versionInputEl = text.inputEl;
+			});
+
+		let attachConfigToggle = false;
+		new Setting(containerEl)
+			.setName('附加插件配置')
+			.setDesc('附加插件配置 JSON 文件')
+			.addToggle(toggle => toggle
+				.setValue(false)
+				.onChange(async (value) => {
+					attachConfigToggle = value;
+				}));
+
+		let attachDataToggle = false;
+		new Setting(containerEl)
+			.setName('附加插件数据')
+			.setDesc('附加 bridge-cache 等插件数据文件夹')
+			.addToggle(toggle => toggle
+				.setValue(false)
+				.onChange(async (value) => {
+					attachDataToggle = value;
+				}));
+
+		new Setting(containerEl)
+			.setName('打包插件')
+			.setDesc('')
+			.addButton(button => {
+				let packing = false;
+				button.setButtonText('打包插件');
+				button.setCta();
+				button.onClick(async () => {
+					if (packing) return;
+					packing = true;
+					button.setDisabled(true);
+					button.setButtonText('打包中...');
+
+					try {
+						const version = versionInputEl?.value?.trim() || this.plugin.manifest.version;
+
+						const manifest = {
+							...this.plugin.manifest,
+							version
+						};
+
+						const pluginDir = '.obsidian/plugins/sillot/';
+						const cacheDir = pluginDir + 'bridge-cache/';
+
+						const JSZip = (await import('jszip')).default;
+						const zip = new JSZip();
+
+						zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+						const mainJsContent = await this.app.vault.adapter.read(pluginDir + 'main.js');
+						zip.file('main.js', mainJsContent);
+
+						try {
+							const mainCssContent = await this.app.vault.adapter.read(pluginDir + 'main.css');
+							zip.file('main.css', mainCssContent);
+						} catch { }
+
+						try {
+							const stylesContent = await this.app.vault.adapter.read(pluginDir + 'styles/styles.css');
+							zip.file('styles/styles.css', stylesContent);
+						} catch { }
+
+						if (attachConfigToggle) {
+							const configData = await this.plugin.loadData();
+							zip.file('data.json', JSON.stringify(configData, null, 2));
+						}
+
+						if (attachDataToggle) {
+							try {
+								if (await this.app.vault.adapter.exists(cacheDir)) {
+									const result = await this.app.vault.adapter.list(cacheDir);
+									const files = result.files || [];
+									for (const file of files) {
+										const content = await this.app.vault.adapter.read(file);
+										zip.file('bridge-cache/' + file.replace(cacheDir, ''), content);
+									}
+								}
+							} catch (err) {
+								console.error('Failed to attach bridge-cache:', err);
+							}
+						}
+
+						const blob = await zip.generateAsync({ type: 'blob' });
+						const url = URL.createObjectURL(blob);
+						const a = document.createElement('a');
+						a.href = url;
+						a.download = `sillot-${version}.zip`;
+						a.click();
+						URL.revokeObjectURL(url);
+
+						new Notice(`插件包已生成: sillot-${version}.zip`, 4000);
+					} catch (err: any) {
+						new Notice(`打包失败: ${err.message}`, 4000);
+					} finally {
+						packing = false;
+						button.setDisabled(false);
+						button.setButtonText('打包插件');
+					}
+				});
+			});
 	}
 
 	hide() {

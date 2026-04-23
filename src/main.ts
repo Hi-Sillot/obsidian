@@ -29,6 +29,7 @@ import { Logger } from './utils/Logger';
 import { TaskTracker } from './utils/TaskTracker';
 import { PRCheckPoller } from './utils/PRCheckPoller';
 import { StatusBarManager } from './ui/StatusBarManager';
+import { UpdateChecker } from './utils/UpdateChecker';
 import { ViewManager } from './ui/ViewManager';
 import { VIEW_TYPE_PUBLISH } from './ui/PublishPanelView';
 import { ConfigEditorModal } from './ui/ConfigEditorModal';
@@ -54,6 +55,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 	statusBarManager: StatusBarManager;
 	viewManager: ViewManager;
 	documentTreeService: DocumentTreeService | null = null;
+	updateChecker: UpdateChecker;
 
 	async onload() {
 		const loadData = await this.loadData() || {};
@@ -137,6 +139,13 @@ export default class VuePressPublisherPlugin extends Plugin {
 
 		this.statusBarManager = new StatusBarManager(this);
 		this.statusBarManager.bindTracker(this.taskTracker, this.prCheckPoller);
+
+		this.updateChecker = new UpdateChecker({
+			githubToken: this.settings.githubToken,
+			updateRepo: this.settings.updateRepo,
+			updateChannel: this.settings.updateChannel,
+			manifestVersion: this.manifest.version
+		});
 
 		if (this.settings.clearTaskHistoryOnStartup) {
 			this.taskTracker.clearHistory();

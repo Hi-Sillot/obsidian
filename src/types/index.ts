@@ -18,6 +18,9 @@ export interface PluginSettings {
 	publishBranchPrefix: string;
 	clearTaskHistoryOnStartup: boolean;
 	recentPublishPaths: string[];
+	updateChannel: 'github' | 'github-dev' | 'local';
+	updateRepo: string;
+	lastCheckTime: number | null;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -40,6 +43,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	publishBranchPrefix: 'publish/',
 	clearTaskHistoryOnStartup: true,
 	recentPublishPaths: [] as string[],
+	updateChannel: 'github' as const,
+	updateRepo: 'Hi-Sillot/obsidian',
+	lastCheckTime: null,
 };
 
 export interface PluginSyncInfo {

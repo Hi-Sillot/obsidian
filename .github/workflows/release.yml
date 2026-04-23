@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        if: github.event_name == 'push'
+
+      - name: Get version from input
+        id: version_dispatch
+        run: echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+        if: github.event_name == 'workflow_dispatch'
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'alpha') }}
+          files: |
+            main.js
+            main.css
+            manifest.json
+            styles/styles.css
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        if: github.event_name == 'push'
+
+      - name: Extract version from input
+        id: version_dispatch
+        run: echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+        if: github.event_name == 'workflow_dispatch'
+
+      - name: Notify release
+        run: |
+          echo "Release ${{ steps.version.outputs.VERSION }} created successfully!"
+          echo "Users can now update their Sillot plugin to this version."
