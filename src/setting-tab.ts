@@ -158,7 +158,8 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 
 							if (result.error) {
-								new Notice(`检查更新失败: ${result.error}`, 4000);
+								const detailMsg = result.errorDetail ? `\n${result.errorDetail}` : '';
+								new Notice(`检查更新失败: ${result.error}${detailMsg}`, 6000);
 							} else if (result.hasUpdate) {
 								new Notice(`发现新版本 ${result.latestVersion}！点击查看发布页。`, 6000);
 							} else {

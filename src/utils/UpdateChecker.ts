@@ -8,12 +8,16 @@ export interface ReleaseInfo {
 	isPrerelease: boolean;
 }
 
+export type UpdateErrorType = 'empty-repo' | 'not-found' | 'network' | 'rate-limit' | 'auth-failed' | 'unknown';
+
 export interface UpdateCheckResult {
 	hasUpdate: boolean;
 	currentVersion: string;
 	latestVersion: string;
 	releaseInfo: ReleaseInfo | null;
 	error?: string;
+	errorType?: UpdateErrorType;
+	errorDetail?: string;
 }
 
 export class UpdateChecker {
@@ -42,19 +46,25 @@ export class UpdateChecker {
 				currentVersion: this.manifestVersion,
 				latestVersion: this.manifestVersion,
 				releaseInfo: null,
-				error: '使用本地模式，请手动选择更新文件'
+				error: '使用本地模式，请手动选择更新文件',
+				errorType: 'unknown'
 			};
 		}
 
+		const DEFAULT_REPO = 'Hi-Sillot/obsidian';
+		const effectiveRepo = this.updateRepo?.trim() || DEFAULT_REPO;
+
 		try {
-			const releases = await this.fetchReleases();
+			const releases = await this.fetchReleases(effectiveRepo);
 			if (!releases || releases.length === 0) {
 				return {
 					hasUpdate: false,
 					currentVersion: this.manifestVersion,
 					latestVersion: this.manifestVersion,
 					releaseInfo: null,
-					error: 'No releases found'
+					error: '该仓库暂无发布版本',
+					errorType: 'not-found',
+					errorDetail: `仓库 ${effectiveRepo} 没有找到任何 Release，请确认仓库地址是否正确`
 				};
 			}
 
@@ -80,18 +90,38 @@ export class UpdateChecker {
 				}
 			};
 		} catch (error: any) {
+			const errorMsg = error.message || 'Failed to check for updates';
+			let errorType: UpdateErrorType = 'unknown';
+			let errorDetail = '';
+
+			if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
+				errorType = 'not-found';
+				errorDetail = `仓库 ${effectiveRepo} 不存在或无访问权限`;
+			} else if (errorMsg.includes('403') || errorMsg.includes('rate limit')) {
+				errorType = 'rate-limit';
+				errorDetail = 'API 调用频率超限，请稍后再试或配置 GitHub Token';
+			} else if (errorMsg.includes('401') || errorMsg.includes('401')) {
+				errorType = 'auth-failed';
+				errorDetail = 'Token 认证失败，请检查 GitHub Token 是否正确';
+			} else if (errorMsg.includes('fetch') || errorMsg.includes('network') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ENOTFOUND')) {
+				errorType = 'network';
+				errorDetail = '网络连接失败，请检查网络设置或代理配置';
+			}
+
 			return {
 				hasUpdate: false,
 				currentVersion: this.manifestVersion,
 				latestVersion: this.manifestVersion,
 				releaseInfo: null,
-				error: error.message || 'Failed to check for updates'
+				error: errorMsg,
+				errorType,
+				errorDetail
 			};
 		}
 	}
 
-	private async fetchReleases(): Promise<any[]> {
-		const url = `https://api.github.com/repos/${this.updateRepo}/releases?per_page=10`;
+	private async fetchReleases(repo: string): Promise<any[]> {
+		const url = `https://api.github.com/repos/${repo}/releases?per_page=10`;
 
 		const headers: Record<string, string> = {
 			'Accept': 'application/vnd.github+json',

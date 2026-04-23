@@ -40,6 +40,7 @@ import {
 import type { ConfigType, VuePressConfigFile, AssetFile } from '../../sync/ConfigEditor';
 import { detectConfigType, parseNavbarFile, serializeNavbarFile, type NavItem } from './config-parser';
 import { PaginationBar } from '../PaginationBar';
+import { useObsidianTheme } from './composables/useObsidianTheme';
 
 export interface ConfigEditorAPI {
 	fetchConfig: (type: ConfigType) => Promise<string | null>;
@@ -73,126 +74,6 @@ export interface NaiveUIModalOptions {
 	configBundleUrl?: string;
 	openPublishModal?: (onSubmit: (result: any) => void) => void;
 	openPRCheckModal?: (prNumber: number, branch: string) => void;
-}
-
-function getObsidianTheme(): 'dark' | 'light' {
-	return document.body.classList.contains('theme-dark') ? 'dark' : 'light';
-}
-
-function getObsidianColors(theme: 'dark' | 'light'): Record<string, string> {
-	const styles = getComputedStyle(document.body);
-	if (theme === 'dark') {
-		return {
-			primaryColor: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-			primaryColorHover: styles.getPropertyValue('--interactive-hover').trim() || '#8B5CF6',
-			primaryColorPressed: styles.getPropertyValue('--interactive-accent').trim() || '#6D28D9',
-			primaryColorSuppl: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-			popoverColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			bodyColor: styles.getPropertyValue('--background-primary').trim() || '#11111b',
-			cardColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			modalColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			inputColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			tableColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			borderColor: styles.getPropertyValue('--background-modifier-border').trim() || '#3a3a4a',
-			dividerColor: styles.getPropertyValue('--background-modifier-border').trim() || '#3a3a4a',
-			textColorBase: styles.getPropertyValue('--text-normal').trim() || '#cdd6f4',
-			textColor1: styles.getPropertyValue('--text-normal').trim() || '#cdd6f4',
-			textColor2: styles.getPropertyValue('--text-muted').trim() || '#a6adc8',
-			textColor3: styles.getPropertyValue('--text-faint').trim() || '#6c7086',
-		};
-	}
-	return {
-		primaryColor: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-		primaryColorHover: styles.getPropertyValue('--interactive-hover').trim() || '#6D28D9',
-		primaryColorPressed: styles.getPropertyValue('--interactive-accent').trim() || '#5B21B6',
-		primaryColorSuppl: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-		popoverColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		bodyColor: styles.getPropertyValue('--background-primary').trim() || '#f5f5f5',
-		cardColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		modalColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		inputColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		tableColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		borderColor: styles.getPropertyValue('--background-modifier-border').trim() || '#e0e0e0',
-		dividerColor: styles.getPropertyValue('--background-modifier-border').trim() || '#e0e0e0',
-		textColorBase: styles.getPropertyValue('--text-normal').trim() || '#4a4a4a',
-		textColor1: styles.getPropertyValue('--text-normal').trim() || '#4a4a4a',
-		textColor2: styles.getPropertyValue('--text-muted').trim() || '#6a6a6a',
-		textColor3: styles.getPropertyValue('--text-faint').trim() || '#9a9a9a',
-	};
-}
-
-function createThemeOverrides(theme: 'dark' | 'light'): GlobalThemeOverrides {
-	const obsidianColors = getObsidianColors(theme);
-
-	return {
-		common: {
-			fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-			fontFamilyMono: '"JetBrains Mono", "Fira Code", Consolas, monospace',
-			borderRadius: '8px',
-			...obsidianColors,
-		},
-		Button: {
-			colorPrimary: obsidianColors.primaryColor,
-			colorHoverPrimary: obsidianColors.primaryColorHover,
-			colorPressedPrimary: obsidianColors.primaryColorPressed,
-			textColorPrimary: '#ffffff',
-		},
-		Card: {
-			color: obsidianColors.cardColor,
-			colorModal: obsidianColors.modalColor,
-			borderColor: obsidianColors.borderColor,
-		},
-		Modal: {
-			color: obsidianColors.modalColor,
-		},
-		Input: {
-			color: obsidianColors.inputColor,
-			colorFocus: obsidianColors.inputColor,
-			borderColor: obsidianColors.borderColor,
-			borderHover: obsidianColors.primaryColor,
-			borderFocus: obsidianColors.primaryColor,
-		},
-		Form: {
-			labelTextColor: obsidianColors.textColor2,
-		},
-		Tabs: {
-			tabTextColorLine: obsidianColors.textColor2,
-			tabTextColorActiveLine: obsidianColors.textColorBase,
-			tabTextColorHoverLine: obsidianColors.primaryColor,
-			barColor: obsidianColors.primaryColor,
-		},
-		Select: {
-			peers: {
-				InternalSelection: {
-					color: obsidianColors.inputColor,
-					border: `1px solid ${obsidianColors.borderColor}`,
-					borderHover: obsidianColors.primaryColor,
-					borderFocus: obsidianColors.primaryColor,
-					textColor: obsidianColors.textColorBase,
-				}
-			}
-		},
-		Progress: {
-			fill: obsidianColors.primaryColor,
-		},
-		Alert: {
-			colorError: theme === 'dark' ? '#f5212d' : '#d03050',
-		},
-		Checkbox: {
-			colorChecked: obsidianColors.primaryColor,
-			borderChecked: obsidianColors.primaryColor,
-		},
-		List: {
-			color: 'transparent',
-		},
-		// ListItem: {
-		// 	color: 'transparent',
-		// },
-		Tree: {
-			nodeColor: obsidianColors.textColorBase,
-			nodeTextColor: obsidianColors.textColorBase,
-		},
-	};
 }
 
 function convertToTreeOptions(files: VuePressConfigFile[], prefix: string = ''): TreeOption[] {
@@ -308,8 +189,7 @@ export function createConfigEditorModal(options: NaiveUIModalOptions): {
 
 	const configOptions = ref<{ label: string; value: string }[]>([]);
 
-	const currentTheme = ref<'dark' | 'light'>(getObsidianTheme());
-	const themeOverrides = computed(() => createThemeOverrides(currentTheme.value));
+	const { currentTheme, themeOverrides } = useObsidianTheme();
 
 	const vuepressTree = ref<VuePressConfigFile[]>([]);
 	const vuepressTreeOptions = ref<TreeOption[]>([]);
@@ -462,8 +342,6 @@ export function createConfigEditorModal(options: NaiveUIModalOptions): {
 		}
 	});
 
-	let themeObserver: MutationObserver | null = null;
-
 	const init = async () => {
 		// 设置默认配置包 URL
 		if (options.configBundleUrl) {
@@ -482,18 +360,6 @@ export function createConfigEditorModal(options: NaiveUIModalOptions): {
 		}
 
 		await loadVuePressTree();
-
-		themeObserver = new MutationObserver((mutations) => {
-			for (const mutation of mutations) {
-				if (mutation.attributeName === 'class') {
-					const newTheme = getObsidianTheme();
-					if (newTheme !== currentTheme.value) {
-						currentTheme.value = newTheme;
-					}
-				}
-			}
-		});
-		themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 	};
 
 	const loadVuePressTree = async (forceRefresh = false) => {
@@ -1461,13 +1327,6 @@ export function createConfigEditorModal(options: NaiveUIModalOptions): {
 				init();
 			});
 
-			onUnmounted(() => {
-				if (themeObserver) {
-					themeObserver.disconnect();
-					themeObserver = null;
-				}
-			});
-
 			return () => h(NConfigProvider, {
 				theme: currentTheme.value === 'dark' ? darkTheme : lightTheme,
 				themeOverrides: themeOverrides.value
@@ -1641,10 +1500,6 @@ export function createConfigEditorModal(options: NaiveUIModalOptions): {
 	return {
 		app,
 		unmount: () => {
-			if (themeObserver) {
-				themeObserver.disconnect();
-				themeObserver = null;
-			}
 			app.unmount();
 			container.innerHTML = '';
 		},

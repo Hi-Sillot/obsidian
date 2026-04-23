@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { UpdateCheckResult } from '../../utils/UpdateChecker';
+import type { UpdateCheckResult, UpdateErrorType } from '../../utils/UpdateChecker';
 
 interface Props {
   currentVersion: string;
@@ -33,6 +33,25 @@ const updateStatus = computed(() => {
   return 'latest';
 });
 
+const errorType = computed<UpdateErrorType | undefined>(() => props.result?.errorType);
+const errorDetail = computed(() => props.result?.errorDetail ?? '');
+
+const getErrorMessage = computed(() => {
+  if (!props.result?.error) return '';
+  
+  const messages: Record<UpdateErrorType, string> = {
+    'empty-repo': '⚠️ 配置问题',
+    'not-found': '🔍 未找到',
+    'network': '🌐 网络异常',
+    'rate-limit': '⏳ 频率限制',
+    'auth-failed': '🔐 认证失败',
+    'unknown': '❌ 检查失败'
+  };
+  
+  const prefix = errorType.value ? `${messages[errorType.value]} - ` : '';
+  return `${prefix}${props.result.error}`;
+});
+
 const checkUpdate = () => emit('check');
 const openReleasePage = () => emit('open-release');
 </script>
@@ -40,6 +59,7 @@ const openReleasePage = () => emit('open-release');
 <template>
   <n-modal v-model:show="showModal" preset="card" :title="modalTitle" class="update-modal">
     <n-space vertical size="large">
+      <!-- 当前版本 -->
       <n-space vertical>
         <n-text depth="3">当前版本</n-text>
         <n-text strong>{{ currentVersion }}</n-text>
@@ -47,6 +67,7 @@ const openReleasePage = () => emit('open-release');
 
       <n-divider />
 
+      <!-- 最新版本 -->
       <n-space vertical>
         <n-text depth="3">最新版本</n-text>
         <n-space align="center">
@@ -63,13 +84,22 @@ const openReleasePage = () => emit('open-release');
         </n-scrollbar>
       </n-space>
 
-      <n-space v-if="result?.error" vertical>
-        <n-alert type="error" :title="result.error" />
+      <!-- 错误信息区域：带详细描述和操作按钮 -->
+      <n-space v-if="result?.error" vertical class="error-section">
+        <n-alert type="error" :title="getErrorMessage">
+          <template v-if="errorDetail" #default>
+            <n-text depth="3">{{ errorDetail }}</n-text>
+          </template>
+        </n-alert>
       </n-space>
 
       <n-space justify="end">
         <n-button @click="showModal = false">关闭</n-button>
-        <n-button type="primary" :loading="checking" @click="checkUpdate">
+        <n-button 
+          type="primary" 
+          :loading="checking"
+          @click="checkUpdate"
+        >
           {{ checking ? '检查中...' : '检查更新' }}
         </n-button>
         <n-button
@@ -97,5 +127,9 @@ const openReleasePage = () => emit('open-release');
 .release-body {
   white-space: pre-wrap;
   font-size: 13px;
+}
+
+.error-section {
+  margin-top: 4px;
 }
 </style>

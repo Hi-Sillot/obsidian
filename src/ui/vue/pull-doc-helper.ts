@@ -25,6 +25,7 @@ import {
 import type { DocumentTreeService } from '../../sync/DocumentTreeService';
 import type { DocTreeNode, PullSource, LocalExistenceResult } from '../../types';
 import type { PermalinkIndexEntry } from '../../bridge/types';
+import { useObsidianTheme } from './composables/useObsidianTheme';
 
 export interface PullDocModalOptions {
 	container: HTMLElement;
@@ -37,90 +38,6 @@ export interface PullDocModalOptions {
 	docsDir: string;
 	onClose: () => void;
 	onDownload: (cloudPath: string, localSavePath: string, source: PullSource) => Promise<void>;
-}
-
-function getObsidianTheme(): 'dark' | 'light' {
-	return document.body.classList.contains('theme-dark') ? 'dark' : 'light';
-}
-
-function getObsidianColors(theme: 'dark' | 'light'): Record<string, string> {
-	const styles = getComputedStyle(document.body);
-	if (theme === 'dark') {
-		return {
-			primaryColor: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-			primaryColorHover: styles.getPropertyValue('--interactive-hover').trim() || '#8B5CF6',
-			primaryColorPressed: styles.getPropertyValue('--interactive-accent').trim() || '#6D28D9',
-			primaryColorSuppl: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-			popoverColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			bodyColor: styles.getPropertyValue('--background-primary').trim() || '#11111b',
-			cardColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			modalColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			inputColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			tableColor: styles.getPropertyValue('--background-secondary').trim() || '#1a1a1a',
-			borderColor: styles.getPropertyValue('--background-modifier-border').trim() || '#3a3a4a',
-			dividerColor: styles.getPropertyValue('--background-modifier-border').trim() || '#3a3a4a',
-			textColorBase: styles.getPropertyValue('--text-normal').trim() || '#cdd6f4',
-			textColor1: styles.getPropertyValue('--text-normal').trim() || '#cdd6f4',
-			textColor2: styles.getPropertyValue('--text-muted').trim() || '#a6adc8',
-			textColor3: styles.getPropertyValue('--text-faint').trim() || '#6c7086',
-		};
-	}
-	return {
-		primaryColor: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-		primaryColorHover: styles.getPropertyValue('--interactive-hover').trim() || '#6D28D9',
-		primaryColorPressed: styles.getPropertyValue('--interactive-accent').trim() || '#5B21B6',
-		primaryColorSuppl: styles.getPropertyValue('--interactive-accent').trim() || '#7C3AED',
-		popoverColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		bodyColor: styles.getPropertyValue('--background-primary').trim() || '#f5f5f5',
-		cardColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		modalColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		inputColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		tableColor: styles.getPropertyValue('--background-secondary').trim() || '#ffffff',
-		borderColor: styles.getPropertyValue('--background-modifier-border').trim() || '#e0e0e0',
-		dividerColor: styles.getPropertyValue('--background-modifier-border').trim() || '#e0e0e0',
-		textColorBase: styles.getPropertyValue('--text-normal').trim() || '#4a4a4a',
-		textColor1: styles.getPropertyValue('--text-normal').trim() || '#4a4a4a',
-		textColor2: styles.getPropertyValue('--text-muted').trim() || '#6a6a6a',
-		textColor3: styles.getPropertyValue('--text-faint').trim() || '#9a9a9a',
-	};
-}
-
-function createThemeOverrides(theme: 'dark' | 'light'): GlobalThemeOverrides {
-	const c = getObsidianColors(theme);
-	return {
-		common: {
-			fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-			fontFamilyMono: '"JetBrains Mono", "Fira Code", Consolas, monospace',
-			borderRadius: '8px',
-			...c,
-		},
-		Card: {
-			color: c.cardColor,
-			colorModal: c.modalColor,
-			borderColor: c.borderColor,
-		},
-		Input: {
-			color: c.inputColor,
-			colorFocus: c.inputColor,
-			borderColor: c.borderColor,
-			borderHover: c.primaryColor,
-			borderFocus: c.primaryColor,
-		},
-		Tabs: {
-			tabTextColorLine: c.textColor2,
-			tabTextColorActiveLine: c.textColorBase,
-			tabTextColorHoverLine: c.primaryColor,
-			barColor: c.primaryColor,
-		},
-		Tree: {
-			nodeColor: c.textColorBase,
-			nodeTextColor: c.textColorBase,
-		},
-		Split: {
-			resizeTriggerColor: c.borderColor,
-			resizeTriggerColorHover: c.primaryColor,
-		},
-	};
 }
 
 // 将 DocTreeNode 转换为 NTree 的 TreeOption 格式
@@ -139,10 +56,7 @@ export function createPullDocModal(options: PullDocModalOptions): {
 	app: VueApp;
 	unmount: () => void;
 } {
-	const currentTheme = ref<'dark' | 'light'>(getObsidianTheme());
-	const themeOverrides = computed(() => createThemeOverrides(currentTheme.value));
-
-	let themeObserver: MutationObserver | null = null;
+	const { currentTheme, themeOverrides } = useObsidianTheme();
 
 	// 标签页状态
 	const activeTab = ref('tree');
@@ -740,27 +654,7 @@ export function createPullDocModal(options: PullDocModalOptions): {
 	const MainPanel = {
 		setup() {
 			onMounted(async () => {
-				// 监听 Obsidian 主题变化
-				themeObserver = new MutationObserver(() => {
-					const newTheme = getObsidianTheme();
-					if (newTheme !== currentTheme.value) {
-						currentTheme.value = newTheme;
-					}
-				});
-				themeObserver.observe(document.body, {
-					attributes: true,
-					attributeFilter: ['class'],
-				});
-
-				// 加载文档树
 				await loadDocumentTree();
-			});
-
-			onUnmounted(() => {
-				if (themeObserver) {
-					themeObserver.disconnect();
-					themeObserver = null;
-				}
 			});
 
 			return () => h(NConfigProvider, {
@@ -883,10 +777,6 @@ export function createPullDocModal(options: PullDocModalOptions): {
 	return {
 		app,
 		unmount: () => {
-			if (themeObserver) {
-				themeObserver.disconnect();
-				themeObserver = null;
-			}
 			renderComponent.unload();
 			app.unmount();
 			container.innerHTML = '';

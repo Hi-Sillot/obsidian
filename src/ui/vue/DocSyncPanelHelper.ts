@@ -46,6 +46,7 @@ import type {
 	DiffCompareSource,
 	DiffLine,
 } from '../../types';
+import { useObsidianTheme } from './composables/useObsidianTheme';
 
 const PANEL_CLASS = 'sillot-doc-sync-panel';
 
@@ -117,10 +118,6 @@ export interface DocSyncPanelAPI {
 	refreshPanel: () => void;
 	loadAvailableAuthors: () => Promise<AuthorInfo[]>;
 	addAuthor: (author: AuthorInfo) => void;
-}
-
-function getObsidianTheme(): 'dark' | 'light' {
-	return document.body.classList.contains('theme-dark') ? 'dark' : 'light';
 }
 
 function createThemeOverrides(theme: 'dark' | 'light'): GlobalThemeOverrides {
@@ -230,14 +227,12 @@ export function createDocSyncPanelApp(
 	const authors = ref<AuthorInfo[]>(api.getAuthors());
 	const currentFile = ref<TFile | null>(api.getCurrentFile());
 	const isDesktop = ref(api.isDesktop());
-	const currentTheme = ref<'dark' | 'light'>(getObsidianTheme());
+	const { currentTheme } = useObsidianTheme();
 	const themeOverrides = computed(() => createThemeOverrides(currentTheme.value));
 
 	const showAddAuthorModal = ref(false);
 	const availableAuthors = ref<AuthorInfo[]>([]);
 	const loadingAuthors = ref(false);
-
-	let themeObserver: MutationObserver | null = null;
 
 	const forceUpdate = () => {
 		panelState.value = api.getPanelState();
@@ -257,27 +252,6 @@ export function createDocSyncPanelApp(
 
 	const DocSyncPanelComponent = {
 		setup() {
-			onMounted(() => {
-				themeObserver = new MutationObserver((mutations) => {
-					for (const mutation of mutations) {
-						if (mutation.attributeName === 'class') {
-							const newTheme = getObsidianTheme();
-							if (newTheme !== currentTheme.value) {
-								currentTheme.value = newTheme;
-							}
-						}
-					}
-				});
-				themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-			});
-
-			onUnmounted(() => {
-				if (themeObserver) {
-					themeObserver.disconnect();
-					themeObserver = null;
-				}
-			});
-
 			const onSetPanelState = (state: PanelState) => {
 				panelState.value = state;
 				api.setPanelState(state);
@@ -314,10 +288,6 @@ export function createDocSyncPanelApp(
 	return {
 		app,
 		unmount: () => {
-			if (themeObserver) {
-				themeObserver.disconnect();
-				themeObserver = null;
-			}
 			app.unmount();
 		},
 		forceUpdate,

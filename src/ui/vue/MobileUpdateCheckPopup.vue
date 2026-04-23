@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { UpdateCheckResult } from '../../utils/UpdateChecker';
+import type { UpdateCheckResult, UpdateErrorType } from '../../utils/UpdateChecker';
 
 interface Props {
   currentVersion: string;
+  updateRepo: string;
   checking: boolean;
   result: UpdateCheckResult | null;
 }
@@ -26,6 +27,24 @@ const updateStatus = computed(() => {
   return 'latest';
 });
 
+const errorType = computed<UpdateErrorType | undefined>(() => props.result?.errorType);
+const errorDetail = computed(() => props.result?.errorDetail ?? '');
+
+const getErrorMessage = computed(() => {
+  if (!props.result?.error) return '';
+  
+  const messages: Record<UpdateErrorType, string> = {
+    'empty-repo': '配置问题',
+    'not-found': '未找到',
+    'network': '网络异常',
+    'rate-limit': '频率限制',
+    'auth-failed': '认证失败',
+    'unknown': '检查失败'
+  };
+  
+  return errorType.value ? `${messages[errorType.value]}: ${props.result.error}` : props.result.error;
+});
+
 const checkUpdate = () => emit('check');
 const openReleasePage = () => emit('open-release');
 </script>
@@ -37,6 +56,7 @@ const openReleasePage = () => emit('open-release');
         <t-text class="popup-title">检查更新</t-text>
       </div>
 
+      <!-- 版本信息：始终显示 -->
       <t-cell title="当前版本">
         <template #description>
           <t-text>{{ currentVersion }}</t-text>
@@ -60,8 +80,13 @@ const openReleasePage = () => emit('open-release');
         </div>
       </div>
 
+      <!-- 错误信息区域 -->
       <div v-if="result?.error" class="error-alert">
-        <t-alert theme="error" :title="result.error" />
+        <t-alert theme="error" :title="getErrorMessage">
+          <template v-if="errorDetail" #default>
+            <t-text class="error-detail">{{ errorDetail }}</t-text>
+          </template>
+        </t-alert>
       </div>
 
       <div class="popup-actions">
@@ -132,6 +157,11 @@ const openReleasePage = () => emit('open-release');
 
 .error-alert {
   margin-top: 16px;
+}
+
+.error-detail {
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .popup-actions {
