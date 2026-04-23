@@ -1487,10 +1487,10 @@ export function createConfigEditorModal(options: NaiveUIModalOptions): {
 									default: () => [
 										h(NInputGroup, {}, {
 											default: () => [
-												h(NInputGroupLabel, { style: { width: '180px' } }, { default: () => 'vuepress-config-bundle.json URL:' }),
+												h(NInputGroupLabel, { style: { width: '58px' } }, { default: () => 'URL:' }),
 												h(NInput, {
 													value: configBundleUrl.value,
-													placeholder: 'https://example.com/obsidian-bridge/vuepress-config-bundle.json',
+													placeholder: 'https://hi.sillot.top/obsidian-bridge/vuepress-config-bundle.json',
 													onUpdateValue: (val: string) => { configBundleUrl.value = val; }
 												}),
 													h(NButton, {

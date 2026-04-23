@@ -61,6 +61,64 @@ export default class VuePressPublisherPlugin extends Plugin {
 		this.logger.banner(this.manifest.version);
 		this.logger.info('Plugin', '插件加载开始');
 
+		// ===== 第一阶段：立即注册可见元素（设置面板、命令、Ribbon、视图） =====
+		this.addSettingTab(new VuePressPublisherSettingTab(this.app, this));
+
+		this.viewManager = new ViewManager(this);
+		this.viewManager.registerViews();
+
+		this.addRibbonIcon('upload-cloud', '发布管理', () => {
+			this.viewManager.activatePublishPanel();
+		});
+		this.addRibbonIcon('refresh-cw', '同步管理', () => {
+			this.viewManager.activateSyncView();
+		});
+		this.addRibbonIcon('download', '从云端拉取', () => {
+			this.openPullDocumentModal();
+		});
+		this.addRibbonIcon('git-branch', '站点图谱', () => {
+			this.viewManager.activateBiGraphView();
+		});
+
+		this.registerAllCommands();
+
+		this.registerEvent(
+			this.app.workspace.on('editor-menu', (menu, editor, view) => {
+				if (!(view instanceof MarkdownView)) return;
+				menu.addItem((item) => {
+					item.setTitle('Sillot: 插入行内同步模板')
+						.setIcon('sync')
+						.onClick(async () => {
+							const syncId = await this.promptSyncId();
+							if (!syncId) return;
+							const now = formatSyncDateTime();
+							const template = `\`sync:${syncId} Lv=${now}{}\``;
+							const cursor = editor.getCursor();
+							editor.replaceRange(template, cursor);
+							const bracePos = template.lastIndexOf('{}');
+							editor.setCursor({ line: cursor.line, ch: cursor.ch + bracePos + 1 });
+						});
+				});
+				menu.addItem((item) => {
+					item.setTitle('Sillot: 插入块级同步模板')
+						.setIcon('blocks')
+						.onClick(async () => {
+							const syncId = await this.promptSyncId();
+							if (!syncId) return;
+							const now = formatSyncDateTime();
+							const template = `\`\`\`sync-block\n${syncId} Lv=${now}\n\`\`\``;
+							const cursor = editor.getCursor();
+							editor.replaceRange(template, cursor);
+							const lines = template.split('\n');
+							editor.setCursor({ line: cursor.line + lines.length - 1, ch: 0 });
+						});
+				});
+			})
+		);
+
+		this.logger.info('Plugin', '可见元素注册完成');
+
+		// ===== 第二阶段：轻量初始化（无网络请求） =====
 		this.taskTracker = new TaskTracker();
 		this.prCheckPoller = new PRCheckPoller(this.logger);
 
@@ -80,8 +138,23 @@ export default class VuePressPublisherPlugin extends Plugin {
 		if (this.settings.clearTaskHistoryOnStartup) {
 			this.taskTracker.clearHistory();
 		}
+
 		this.styleInjector = new StyleInjector();
 		this.bridgeCssInjector = new BridgeCssInjector();
+
+		this.syntaxRegistry = new SyntaxRegistry(this);
+		this.syntaxRegistry.registerAll();
+
+		this.registerMarkdownPostProcessor((element) => {
+			element.classList.add('vuepress-preview');
+		});
+
+		registerSyncBlockRenderer(this);
+
+		this.initSyncManager();
+		this.initDocumentTreeService();
+
+		// bridgeManager 必须在 initBiGraphService 之前初始化，因为它依赖 getAssets()
 		this.bridgeManager = new BridgeManager({
 			app: this.app,
 			localBridgePath: this.getBridgeDistPath(),
@@ -93,29 +166,27 @@ export default class VuePressPublisherPlugin extends Plugin {
 			onAssetsLoaded: (assets) => this.onBridgeAssetsLoaded(assets),
 			logger: this.logger,
 		});
-		this.syntaxRegistry = new SyntaxRegistry(this);
-		this.syntaxRegistry.registerAll();
 
-		this.initSyncManager();
-		this.initDocumentTreeService();
+		// 先从缓存同步（同步执行，保证后续服务能立即用上资产）
+		this.syncBridgeAssetsFromCache();
 
-		await Promise.all([
-			this.loadVuePressStyles(),
-			this.initBridgeAssets(),
-		]);
-
-		this.logger.info('Plugin', '插件加载完成');
-
-		this.registerMarkdownPostProcessor((element) => {
-			element.classList.add('vuepress-preview');
-		});
-
-		registerSyncBlockRenderer(this);
+		this.initBiGraphService();
+		this.initPublishStatusChecker();
 
 		const docSyncPanel = new DocSyncPanel(this);
 		docSyncPanel.register();
 		this.docSyncPanel = docSyncPanel;
 
+		this.logger.info('Plugin', '核心功能初始化完成');
+
+		// ===== 第三阶段：异步同步（网络请求，不阻塞 UI） =====
+		this.syncBridgeAssetsAsync();
+		this.loadVuePressStylesAsync();
+
+		this.logger.info('Plugin', '插件加载完成（后台任务已启动）');
+	}
+
+	private registerAllCommands() {
 		this.addCommand({
 			id: 'publish-current-note',
 			name: '发布当前笔记到 VuePress',
@@ -198,58 +269,6 @@ export default class VuePressPublisherPlugin extends Plugin {
 			},
 		});
 
-		this.registerEvent(
-			this.app.workspace.on('editor-menu', (menu, editor, view) => {
-				if (!(view instanceof MarkdownView)) return;
-				menu.addItem((item) => {
-					item.setTitle('Sillot: 插入行内同步模板')
-						.setIcon('sync')
-						.onClick(async () => {
-							const syncId = await this.promptSyncId();
-							if (!syncId) return;
-							const now = formatSyncDateTime();
-							const template = `\`sync:${syncId} Lv=${now}{}\``;
-							const cursor = editor.getCursor();
-							editor.replaceRange(template, cursor);
-							const bracePos = template.lastIndexOf('{}');
-							editor.setCursor({ line: cursor.line, ch: cursor.ch + bracePos + 1 });
-						});
-				});
-				menu.addItem((item) => {
-					item.setTitle('Sillot: 插入块级同步模板')
-						.setIcon('blocks')
-						.onClick(async () => {
-							const syncId = await this.promptSyncId();
-							if (!syncId) return;
-							const now = formatSyncDateTime();
-							const template = `\`\`\`sync-block\n${syncId} Lv=${now}\n\`\`\``;
-							const cursor = editor.getCursor();
-							editor.replaceRange(template, cursor);
-							const lines = template.split('\n');
-							editor.setCursor({ line: cursor.line + lines.length - 1, ch: 0 });
-						});
-				});
-			})
-		);
-
-		this.addRibbonIcon('upload-cloud', '发布管理', () => {
-			this.viewManager.activatePublishPanel();
-		});
-
-		this.addRibbonIcon('refresh-cw', '同步管理', () => {
-			this.viewManager.activateSyncView();
-		});
-
-		this.addRibbonIcon('download', '从云端拉取', () => {
-			this.openPullDocumentModal();
-		});
-
-		this.viewManager = new ViewManager(this);
-		this.viewManager.registerViews();
-
-		this.initBiGraphService();
-		this.initPublishStatusChecker();
-
 		this.addCommand({
 			id: 'open-bigraph',
 			name: '打开站点图谱',
@@ -260,10 +279,6 @@ export default class VuePressPublisherPlugin extends Plugin {
 			id: 'open-bigraph-local',
 			name: '打开当前文件局部图谱',
 			callback: () => this.viewManager.activateBiGraphLocalView(),
-		});
-
-		this.addRibbonIcon('git-branch', '站点图谱', () => {
-			this.viewManager.activateBiGraphView();
 		});
 
 		this.addCommand({
@@ -279,8 +294,43 @@ export default class VuePressPublisherPlugin extends Plugin {
 				}).open();
 			},
 		});
+	}
 
-		this.addSettingTab(new VuePressPublisherSettingTab(this.app, this));
+	private async syncBridgeAssetsAsync() {
+		const cacheLoaded = await this.bridgeManager.loadFromCache();
+		if (cacheLoaded) {
+			this.onBridgeAssetsLoaded(this.bridgeManager.getAssets());
+			this.logger.info('Bridge', '从缓存恢复 Bridge 产物');
+		}
+
+		this.bridgeManager.sync().then((assets) => {
+			this.onBridgeAssetsLoaded(assets);
+			this.logger.info('Bridge', 'Bridge 产物同步成功');
+		}).catch((e: any) => {
+			if (!cacheLoaded) {
+				this.logger.warn('Bridge', 'Bridge 产物同步失败（非致命）', e?.message || String(e));
+			}
+		});
+	}
+
+	private async syncBridgeAssetsFromCache() {
+		try {
+			const loaded = await this.bridgeManager.loadFromCache();
+			if (loaded) {
+				this.onBridgeAssetsLoaded(this.bridgeManager.getAssets());
+				this.logger.info('Bridge', '从缓存恢复 Bridge 产物');
+			}
+		} catch (e: any) {
+			this.logger.warn('Bridge', '从缓存恢复 Bridge 产物失败（非致命）', e?.message || String(e));
+		}
+	}
+
+	private async loadVuePressStylesAsync() {
+		try {
+			await this.loadVuePressStyles();
+		} catch (e: any) {
+			this.logger.warn('Style', 'VuePress 样式加载失败（非致命）', e?.message || String(e));
+		}
 	}
 
 	onunload() {
@@ -368,23 +418,6 @@ export default class VuePressPublisherPlugin extends Plugin {
 		} catch (e) {
 			this.logger.warn('Bridge', 'Bridge 产物同步失败（非致命）', e.message);
 		}
-	}
-
-	async initBridgeAssets() {
-		const cacheLoaded = await this.bridgeManager.loadFromCache();
-		if (cacheLoaded) {
-			this.onBridgeAssetsLoaded(this.bridgeManager.getAssets());
-			this.logger.info('Bridge', '从缓存恢复 Bridge 产物');
-		}
-
-		this.bridgeManager.sync().then((assets) => {
-			this.onBridgeAssetsLoaded(assets);
-			this.logger.info('Bridge', 'Bridge 产物同步成功');
-		}).catch((e) => {
-			if (!cacheLoaded) {
-				this.logger.warn('Bridge', 'Bridge 产物同步失败（非致命）', e.message);
-			}
-		});
 	}
 
 	onBridgeAssetsLoaded(assets: any) {

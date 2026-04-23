@@ -276,49 +276,40 @@ export class ConfigEditor {
 
 		for (const line of frontmatterLines) {
 			const trimmed = line.trim();
+			const isIndented = line !== trimmed && (/^\s/.test(line));
 
 			if (isList) {
 				if (trimmed === '') {
-					// 空行结束列表
-					finishList();
 					continue;
 				}
 
-				if (trimmed.startsWith('- ')) {
-					// 新列表项：先保存之前的对象
+				if (trimmed === '-' || trimmed.startsWith('- ')) {
 					finishCurrentObject();
 
-					const itemContent = trimmed.substring(2).trim();
+					const itemContent = trimmed === '-' ? '' : trimmed.substring(2).trim();
 					if (itemContent === '') {
-						// 空列表项 "- "，开始新对象
 						currentObject = {};
 					} else {
-						// 检查是否是 "key: value" 格式（对象的首个属性）
 						const kvMatch = itemContent.match(/^([^:]+):\s*(.*)$/);
 						if (kvMatch) {
 							currentObject = {};
 							currentObject[kvMatch[1].trim()] = this.parseYamlValue(kvMatch[2].trim());
 						} else {
-							// 简单值列表项
 							listItems.push(this.parseYamlValue(itemContent));
 						}
 					}
-				} else if (trimmed.startsWith('  ') || trimmed.startsWith('\t')) {
-					// 缩进行：对象属性
-					const propMatch = trimmed.trim().match(/^([^:]+):\s*(.*)$/);
+				} else if (isIndented) {
+					const propMatch = trimmed.match(/^([^:]+):\s*(.*)$/);
 					if (propMatch && currentObject) {
 						currentObject[propMatch[1].trim()] = this.parseYamlValue(propMatch[2].trim());
 					} else if (propMatch && !currentObject && listItems.length > 0) {
-						// 兜底：上一个列表项是对象但未标记为 currentObject
 						const lastItem = listItems[listItems.length - 1];
 						if (typeof lastItem === 'object' && lastItem !== null) {
 							lastItem[propMatch[1].trim()] = this.parseYamlValue(propMatch[2].trim());
 						}
 					}
 				} else {
-					// 非列表行，结束列表模式，重新处理此行
 					finishList();
-					// 不 continue，让下面的非列表逻辑处理此行
 				}
 
 				if (isList) continue;
