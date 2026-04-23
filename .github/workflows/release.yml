@@ -27,22 +27,13 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Get version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        if: github.event_name == 'push'
-
-      - name: Get version from input
-        id: version_dispatch
-        run: echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
-        if: github.event_name == 'workflow_dispatch'
-
       - name: Create Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           body_path: CHANGELOG.md
           draft: false
-          prerelease: ${{ contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'alpha') }}
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
           files: |
             main.js
             main.css
@@ -51,21 +42,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  notify:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Extract version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        if: github.event_name == 'push'
-
-      - name: Extract version from input
-        id: version_dispatch
-        run: echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+      - name: Create Release for Dispatch
         if: github.event_name == 'workflow_dispatch'
-
-      - name: Notify release
         run: |
-          echo "Release ${{ steps.version.outputs.VERSION }} created successfully!"
-          echo "Users can now update their Sillot plugin to this version."
+          echo "Creating release with tag: ${{ inputs.version }}"
+          gh release create "${{ inputs.version }}" \
+            --title "Release ${{ inputs.version }}" \
+            --notes-path CHANGELOG.md \
+            main.js main.css manifest.json styles/styles.css
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
