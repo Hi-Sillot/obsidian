@@ -3,6 +3,9 @@ import { VuePressPublisherSettingTab } from './setting-tab';
 import { StyleInjector } from './preview/styleInjector';
 import { registerSyncBlockRenderer } from './preview/syncBlockRenderer';
 import { FileCollector } from './sync/fileCollector';
+import { useDeviceDetection } from './ui/vue/useDeviceDetection';
+import { openMobileConfigEditorModal } from './ui/MobileConfigEditorModal';
+import { openMobilePullDocumentModal } from './ui/MobilePullDocumentModal';
 
 function formatSyncDateTime(date: Date = new Date()): string {
 	const pad = (n: number) => n.toString().padStart(2, '0');
@@ -20,7 +23,7 @@ import { SyntaxRegistry } from './bridge/SyntaxRegistry';
 import { BiGraphService } from './bigraph/BiGraphService';
 import type { BiGraphConfig } from './bigraph/types';
 import { DEFAULT_BIGRAPH_CONFIG } from './bigraph/types';
-import type { PluginSettings, PublishResult, SyncCache, SyncCacheEntry } from './types';
+import type { PluginSettings, PublishResult, SyncCache, SyncCacheEntry, PullDocumentResult, PullSource } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { Logger } from './utils/Logger';
 import { TaskTracker } from './utils/TaskTracker';
@@ -289,9 +292,17 @@ export default class VuePressPublisherPlugin extends Plugin {
 					new Notice('请先在插件设置中配置 GitHub Token 和仓库');
 					return;
 				}
-				new ConfigEditorModal(this.app, this, () => {
-					this.logger.info('Config', '站点配置已更新');
-				}).open();
+				// 检测设备类型，选择合适的配置编辑器
+				const isMobile = this.checkIsMobile();
+				if (isMobile) {
+					openMobileConfigEditorModal(this.app, this, () => {
+						this.logger.info('Config', '站点配置已更新');
+					});
+				} else {
+					new ConfigEditorModal(this.app, this, () => {
+						this.logger.info('Config', '站点配置已更新');
+					}).open();
+				}
 			},
 		});
 	}
@@ -380,14 +391,41 @@ export default class VuePressPublisherPlugin extends Plugin {
 			return;
 		}
 		const vaultRoot = this.app.vault.getRoot().name;
-		const modal = new PullDocumentModal(this.app, this.documentTreeService, {
-			vaultRoot,
-			githubRepo: this.settings.githubRepo,
-			githubBranch: this.settings.defaultBranch,
-			siteDomain: this.settings.siteDomain,
-			docsDir: this.settings.vuepressDocsDir,
-		});
-		modal.open();
+		const docService = this.documentTreeService;
+		const isMobile = this.checkIsMobile();
+		if (isMobile) {
+			openMobilePullDocumentModal(
+				docService,
+				{
+					vaultRoot,
+					githubRepo: this.settings.githubRepo,
+					githubBranch: this.settings.defaultBranch,
+					siteDomain: this.settings.siteDomain,
+					docsDir: this.settings.vuepressDocsDir,
+				},
+				this.app,
+				(cloudPath: string, localSavePath: string, source: PullSource): Promise<void> => {
+					return docService.pullDocument({
+						cloudPath,
+						localSavePath,
+						source,
+					}).then((result) => {
+						if (result && (result as PullDocumentResult).success) {
+							new Notice('文档下载成功');
+						}
+					});
+				}
+			);
+		} else {
+			const modal = new PullDocumentModal(this.app, docService, {
+				vaultRoot,
+				githubRepo: this.settings.githubRepo,
+				githubBranch: this.settings.defaultBranch,
+				siteDomain: this.settings.siteDomain,
+				docsDir: this.settings.vuepressDocsDir,
+			});
+			modal.open();
+		}
 	}
 
 	async loadVuePressStyles() {
@@ -744,6 +782,14 @@ export default class VuePressPublisherPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData({ ...this.settings, syncCache: this.syncCache });
 		this.initSyncManager();
+	}
+
+	checkIsMobile(): boolean {
+		const userAgent = navigator.userAgent;
+		const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+		const screenWidth = window.innerWidth;
+		const isSmallScreen = screenWidth < 768;
+		return mobileRegex.test(userAgent) || isSmallScreen;
 	}
 
 	createGitHubApi(): GitHubApi | null {

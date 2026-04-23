@@ -718,31 +718,30 @@ function renderDiffSection(
 	const contextRadius = 3;
 	const showLines = computeVisibleDiffLines(diff, contextRadius);
 
-	const diffBody = h('div', { class: `${PANEL_CLASS}-diff-body` }, () => {
-		const lines: any[] = [];
-		let lastShown = -1;
-		for (let i = 0; i < diff.lines.length; i++) {
-			if (!showLines.has(i)) continue;
-			if (lastShown >= 0 && i - lastShown > 1) {
-				lines.push(h('div', { class: `${PANEL_CLASS}-diff-sep`, key: `sep-${i}` }, '⋯'));
-			}
-			lastShown = i;
-
-			const line = diff.lines[i];
-			const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
-			lines.push(h('div', {
-				key: i,
-				class: `${PANEL_CLASS}-diff-line ${PANEL_CLASS}-diff-line--${line.type}`,
-			}, [
-				h('div', { class: `${PANEL_CLASS}-diff-line-no` }, [
-					h('span', {}, line.oldLineNo != null ? String(line.oldLineNo) : ''),
-					h('span', {}, line.newLineNo != null ? String(line.newLineNo) : ''),
-				]),
-				h('div', { class: `${PANEL_CLASS}-diff-line-content` }, `${prefix} ${line.content}`),
-			]));
+	const diffBodyLines: any[] = [];
+	let lastShown = -1;
+	for (let i = 0; i < diff.lines.length; i++) {
+		if (!showLines.has(i)) continue;
+		if (lastShown >= 0 && i - lastShown > 1) {
+			diffBodyLines.push(h('div', { class: `${PANEL_CLASS}-diff-sep`, key: `sep-${i}` }, '⋯'));
 		}
-		return lines;
-	});
+		lastShown = i;
+
+		const line = diff.lines[i];
+		const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
+		diffBodyLines.push(h('div', {
+			key: i,
+			class: `${PANEL_CLASS}-diff-line ${PANEL_CLASS}-diff-line--${line.type}`,
+		}, [
+			h('div', { class: `${PANEL_CLASS}-diff-line-no` }, [
+				h('span', {}, line.oldLineNo != null ? String(line.oldLineNo) : ''),
+				h('span', {}, line.newLineNo != null ? String(line.newLineNo) : ''),
+			]),
+			h('div', { class: `${PANEL_CLASS}-diff-line-content` }, `${prefix} ${line.content}`),
+		]));
+	}
+
+	const diffBody = h('div', { class: `${PANEL_CLASS}-diff-body` }, diffBodyLines);
 
 	return h('div', { class: `${PANEL_CLASS}-diff-section`, style: { marginTop: '8px' } }, [
 		diffHeader,

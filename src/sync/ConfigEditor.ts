@@ -45,6 +45,7 @@ export interface ConfigUpdateResult {
 	commitSha?: string;
 	prUrl?: string;
 	prNumber?: number;
+	branch?: string;
 	error?: string;
 }
 
@@ -105,6 +106,27 @@ export class ConfigEditor {
 		}
 		const vuepressDir = this.getVuePressDir();
 		return this.fetchDirectoryTree(vuepressDir);
+	}
+
+	async fetchVuePressFiles(): Promise<VuePressConfigFile[]> {
+		const tree = await this.fetchVuePressTree();
+		return this.flattenVuePressTree(tree);
+	}
+
+	private flattenVuePressTree(files: VuePressConfigFile[]): VuePressConfigFile[] {
+		const result: VuePressConfigFile[] = [];
+		for (const file of files) {
+			if (file.type === 'dir') {
+				if (file.name === '.vuepress' && file.children) {
+					result.push(...this.flattenVuePressTree(file.children));
+				} else if (file.children) {
+					result.push(...this.flattenVuePressTree(file.children));
+				}
+			} else {
+				result.push(file);
+			}
+		}
+		return result;
 	}
 
 	private async fetchDirectoryTree(path: string, depth: number = 0): Promise<VuePressConfigFile[]> {
@@ -544,6 +566,7 @@ export class ConfigEditor {
 				commitSha: result.commitSha,
 				prUrl: result.prUrl,
 				prNumber: result.prNumber,
+				branch: result.branch,
 			};
 		} catch (error: any) {
 			new Notice(`更新配置失败: ${error.message}`, 4000);
@@ -597,6 +620,7 @@ export class ConfigEditor {
 				commitSha: result.commitSha,
 				prUrl: result.prUrl,
 				prNumber: result.prNumber,
+				branch: result.branch,
 			};
 		} catch (error: any) {
 			new Notice(`更新配置失败: ${error.message}`, 4000);
@@ -747,6 +771,7 @@ export class ConfigEditor {
 		return [
 			{ type: 'friends', path: this.getConfigPath('friends'), title: this.getConfigTitle('friends') },
 			{ type: 'readme', path: this.getConfigPath('readme'), title: this.getConfigTitle('readme') },
+			{ type: 'vuepress', path: this.getConfigPath('vuepress'), title: this.getConfigTitle('vuepress') },
 		];
 	}
 

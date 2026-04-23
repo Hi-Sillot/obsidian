@@ -7,5 +7,6 @@
 	"author": "Soltus",
 	"authorUrl": "https://github.com/Soltus",
 	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"isDesktopOnly": false,
+	"styles": ["main.css", "styles.css"]
 }

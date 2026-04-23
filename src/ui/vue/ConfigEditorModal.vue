@@ -85,12 +85,12 @@
 	<n-modal
 		v-model:show="showResult"
 		preset="card"
-		:title="resultSuccess ? '保存成功' : '保存失败'"
+		:title="resultSuccess ? (createPR ? 'PR 成功' : '保存成功') : '保存失败'"
 		:style="{ width: '400px' }"
 	>
 		<n-result
 			:status="resultSuccess ? 'success' : 'error'"
-			:title="resultSuccess ? '保存成功' : '保存失败'"
+			:title="resultSuccess ? (createPR ? 'PR 创建成功' : '保存成功') : '保存失败'"
 		>
 			<template #footer>
 				<n-space justify="center">
@@ -169,12 +169,14 @@ const tabValue = ref('config');
 
 const selectedConfigType = ref('pathmap');
 const configContent = ref('');
+const originalConfigContent = ref('');
 const currentConfigPath = ref('');
 const loading = ref(false);
 const validationErrors = ref<string[]>([]);
 
 const frontmatterFilePath = ref('');
 const frontmatterData = ref<Record<string, any> | null>(null);
+const originalFrontmatterData = ref<Record<string, any> | null>(null);
 const loadingFrontmatter = ref(false);
 const fmValidationErrors = ref<string[]>([]);
 const newFmKey = ref('');
@@ -196,6 +198,10 @@ const configOptions = ref<ConfigOption[]>([]);
 const modalTitle = computed(() => `编辑配置文件 - ${props.pluginName}`);
 
 const canSave = computed(() => {
+	const hasDiff = tabValue.value === 'config'
+		? configContent.value !== originalConfigContent.value
+		: JSON.stringify(frontmatterData.value) !== JSON.stringify(originalFrontmatterData.value);
+	if (!hasDiff) return false;
 	if (tabValue.value === 'config') {
 		return configContent.value.trim().length > 0 && validationErrors.value.length === 0;
 	} else {
@@ -230,6 +236,7 @@ const loadConfig = async () => {
 		const content = await props.api.fetchConfig(selectedConfigType.value);
 		if (content !== null) {
 			configContent.value = content;
+			originalConfigContent.value = configContent.value;
 			if (selectedConfigType.value === 'pathmap') {
 				try {
 					const parsed = JSON.parse(content);
@@ -269,6 +276,7 @@ const loadFrontmatter = async () => {
 		}
 
 		frontmatterData.value = { ...parsed.data };
+		originalFrontmatterData.value = { ...parsed.data };
 
 		if (parsed.data.permalink) {
 			const permValidation = props.api.validatePermalink(parsed.data.permalink);
@@ -365,6 +373,11 @@ const handleResult = (result: any) => {
 		resultSuccess.value = true;
 		prUrl.value = result.prUrl || '';
 		prNumber.value = result.prNumber || null;
+		if (tabValue.value === 'config') {
+			originalConfigContent.value = configContent.value;
+		} else {
+			originalFrontmatterData.value = frontmatterData.value ? { ...frontmatterData.value } : null;
+		}
 	} else {
 		resultSuccess.value = false;
 		prUrl.value = '';
