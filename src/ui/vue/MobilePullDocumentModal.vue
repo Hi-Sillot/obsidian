@@ -1,170 +1,3 @@
-<template>
-  <div class="mobile-pull-doc-wrapper" :class="{ 'is-dark': isDark }" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;">
-    <div class="mobile-overlay" @click.self="handleClose" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: flex-end;">
-      <div class="mobile-panel" style="position: relative; width: 100%; background: var(--panel-bg, #fff); border-radius: 16px 16px 0 0; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;">
-        <div class="panel-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-color, #e0e0e0);">
-          <span style="font-size: 18px; font-weight: 600; color: var(--text-primary, #333);">从云端拉取文档</span>
-          <t-button variant="text" size="small" @click="handleClose" style="padding: 4px;">
-            <CloseIcon />
-          </t-button>
-        </div>
-
-        <div class="panel-content" style="flex: 1; overflow-y: auto; padding: 16px 20px;">
-          <t-tabs v-model="activeTab" :line-width="30" style="--td-tab-nav-bg-color: transparent;">
-            <t-tab-panel value="select">
-              <template #label>
-                <span style="display: inline-flex; align-items: center; gap: 4px;">
-                  📁 选择
-                  <t-badge :count="selectedPath ? 1 : 0" :max-count="99" :offset="[0, -2]" />
-                </span>
-              </template>
-
-              <div style="margin-top: 12px;">
-                <t-input
-                  v-model="pattern"
-                  placeholder="搜索文档..."
-                  :clearable="true"
-                  @input="handleSearch"
-                  style="margin-bottom: 12px;"
-                />
-
-                <div v-if="isLoadingTree" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px;">
-                  <t-loading size="medium" />
-                  <t-text style="display: block; margin-top: 12px; color: var(--text-placeholder, #999);">加载文档树...</t-text>
-                </div>
-
-                <div v-else class="doc-tree" style="max-height: 200px; overflow-y: auto;">
-                  <template v-for="node in treeData" :key="node.value">
-                    <div
-                      style="padding: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-color, #e0e0e0);"
-                      @click="handleNodeClick(node)"
-                    >
-                      <span
-                        v-if="!node.isLeaf"
-                        class="expand-icon"
-                        :class="{ expanded: expandedKeys.includes(node.value) }"
-                        style="transition: transform 0.2s; display: inline-block;"
-                      >▶</span>
-                      <span v-else style="width: 16px; display: inline-block;"></span>
-                      <span>{{ node.isLeaf ? '📄' : '📁' }}</span>
-                      <span style="font-size: 14px; color: var(--text-primary, #333);">{{ node.label }}</span>
-                    </div>
-                    <template v-if="!node.isLeaf && expandedKeys.includes(node.value) && node.children?.length">
-                      <div
-                        v-for="child in node.children"
-                        :key="child.value"
-                        style="padding: 10px 12px 10px 36px; cursor: pointer; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-color, #e0e0e0);"
-                        @click="handleNodeClick(child)"
-                      >
-                        <span>{{ child.isLeaf ? '📄' : '📁' }}</span>
-                        <span style="font-size: 14px; color: var(--text-primary, #333);">{{ child.label }}</span>
-                      </div>
-                    </template>
-                  </template>
-                </div>
-
-                <t-divider style="margin: 16px 0;" />
-
-                <t-input
-                  v-model="urlInputValue"
-                  placeholder="粘贴文档链接..."
-                  style="margin-bottom: 12px;"
-                  @keyup.enter="handleUrlParse"
-                />
-                <t-button
-                  @click="handleUrlParse"
-                  :loading="isParsingUrl"
-                  style="width: 100%;"
-                >
-                  解析
-                </t-button>
-                <t-text style="font-size: 12px; color: var(--text-placeholder, #999); display: block; margin-top: 8px;">
-                  支持 GitHub 文件链接、Raw 链接、站点文档链接
-                </t-text>
-              </div>
-            </t-tab-panel>
-
-            <t-tab-panel value="preview">
-              <template #label>
-                <span style="display: inline-flex; align-items: center; gap: 4px;">
-                  👁️ 预览
-                </span>
-              </template>
-
-              <div v-if="!selectedPath" style="text-align: center; padding: 48px 24px; color: var(--text-placeholder, #999);">
-                <t-text>请先选择或解析文档</t-text>
-              </div>
-
-              <template v-else>
-                <div style="margin-top: 12px; background: var(--bg-secondary, #f5f5f5); border-radius: 12px; padding: 12px;">
-                  <div
-                    style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color, #e0e0e0); cursor: pointer;"
-                    @click="pathExpanded = !pathExpanded"
-                  >
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                      <span style="color: var(--text-secondary, #666); font-size: 13px;">云端路径</span>
-                      <span :style="{ transform: pathExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-secondary, #666)' }">▶</span>
-                    </div>
-                    <span v-if="!pathExpanded" style="color: var(--text-primary, #333); font-size: 13px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ selectedPath }}</span>
-                    <span v-else style="color: var(--text-primary, #333); font-size: 13px; max-width: 55%; text-align: right; word-break: break-all;">{{ selectedPath }}</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color, #e0e0e0);">
-                    <span style="color: var(--text-secondary, #666); font-size: 13px;">本地状态</span>
-                    <span style="color: var(--text-primary, #333); font-size: 13px;">{{ localExistence?.exists ? '已存在' : '不存在' }}</span>
-                  </div>
-                  <div style="padding-top: 8px;">
-                    <t-input v-model="localSavePath" placeholder="保存路径" size="small" />
-                  </div>
-                </div>
-
-                <div style="margin-top: 16px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                    <span style="font-size: 13px; color: var(--text-secondary, #666);">渲染模式</span>
-                    <t-switch
-                      v-model="isRenderedMode"
-                      :label="['渲染', '源码']"
-                    />
-                  </div>
-
-                  <div style="border: 1px solid var(--border-color, #e0e0e0); border-radius: 8px; min-height: 200px; max-height: 300px; overflow-y: auto;">
-                    <div v-if="isLoadingPreview" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px;">
-                      <t-loading size="medium" />
-                      <t-text style="display: block; margin-top: 12px; color: var(--text-placeholder, #999);">加载预览中...</t-text>
-                    </div>
-                    <template v-else>
-                      <pre v-if="!isRenderedMode" style="padding: 12px; font-family: Monaco, Menlo, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 0;">
-                        {{ previewContent }}
-                      </pre>
-                      <div v-else ref="renderedEl" class="rendered-preview markdown-rendered" style="padding: 12px;"></div>
-                    </template>
-                    <div v-if="!isLoadingPreview && !previewContent" style="display: flex; align-items: center; justify-content: center; height: 150px; color: var(--text-placeholder, #999);">
-                      <t-empty description="无预览内容" />
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </t-tab-panel>
-          </t-tabs>
-        </div>
-
-        <div class="panel-footer" style="display: flex; padding: 16px 20px; gap: 12px; border-top: 1px solid var(--border-color, #e0e0e0);">
-          <t-button @click="handleClose" variant="outline" style="flex: 1;">
-            取消
-          </t-button>
-          <t-button
-            @click="handleDownload"
-            :disabled="!selectedPath || !localSavePath || isDownloading"
-            :loading="isDownloading"
-            style="flex: 1;"
-          >
-            {{ localExistence?.exists ? '下载/覆盖' : '下载文档' }}
-          </t-button>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick, onUnmounted } from 'vue';
 import { Notice, MarkdownRenderer, Component } from 'obsidian';
@@ -187,37 +20,83 @@ interface Props {
 
 const props = defineProps<Props>();
 
+// 主题状态
 const isDark = ref(false);
+let themeObserver: MutationObserver | null = null;
+
+// 标签页状态
 const activeTab = ref('select');
+
+// 文档树状态
 const treeData = ref<any[]>([]);
 const isLoadingTree = ref(false);
 const expandedKeys = ref<string[]>([]);
 const loadedPaths = ref<Set<string>>(new Set());
 
+// 选择和预览状态
 const selectedPath = ref<string | null>(null);
 const selectedSource = ref<PullSource | null>(null);
 const previewContent = ref<string | null>(null);
 const localExistence = ref<LocalExistenceResult | null>(null);
 const localSavePath = ref('');
 const isLoadingPreview = ref(false);
-
 const isRenderedMode = ref(true);
 const pathExpanded = ref(false);
 const renderedEl = ref<HTMLElement | null>(null);
+
+// URL 解析状态
+const urlInputValue = ref('');
+const isParsingUrl = ref(false);
+const isDownloading = ref(false);
+const pattern = ref('');
+
+// Markdown 渲染器
 const renderComponent = new Component();
 renderComponent.load();
 let lastRenderedKey = '';
 
-const urlInputValue = ref('');
-const isParsingUrl = ref(false);
-const isDownloading = ref(false);
-
-const pattern = ref('');
-
-let themeObserver: MutationObserver | null = null;
-
+// 主题管理
 const detectTheme = () => {
   isDark.value = document.body.classList.contains('theme-dark');
+};
+
+const applyThemeVariables = (dark: boolean) => {
+  const wrapper = document.querySelector('.mobile-pull-doc-wrapper') as HTMLElement;
+  if (!wrapper) return;
+
+  const themeVars = dark ? {
+    '--td-brand-color': '#1966ff',
+    '--td-brand-color-light': '#1e3a5f',
+    '--td-bg-color-container': '#1a1a1a',
+    '--td-bg-color-container-hover': '#2d2d2d',
+    '--td-border-level-1-color': '#3a3a3a',
+    '--td-text-color-primary': '#cdd6f4',
+    '--td-text-color-secondary': '#6c7086',
+    '--td-text-color-placeholder': '#6c7086',
+    '--td-text-color-disabled': '#4a4a4a',
+    '--panel-bg': '#1a1a1a',
+    '--bg-secondary': '#2d2d2d',
+    '--border-color': '#3a3a3a',
+    '--text-primary': '#cdd6f4',
+    '--text-placeholder': '#6c7086',
+  } : {
+    '--td-brand-color': '#1966ff',
+    '--td-brand-color-light': '#e6eef8',
+    '--td-bg-color-container': '#ffffff',
+    '--td-bg-color-container-hover': '#f5f5f5',
+    '--td-border-level-1-color': '#e0e0e0',
+    '--td-text-color-primary': '#333333',
+    '--td-text-color-secondary': '#999999',
+    '--td-text-color-placeholder': '#999999',
+    '--td-text-color-disabled': '#cccccc',
+    '--panel-bg': '#ffffff',
+    '--bg-secondary': '#f5f5f5',
+    '--border-color': '#e0e0e0',
+    '--text-primary': '#333333',
+    '--text-placeholder': '#999999',
+  };
+
+  Object.entries(themeVars).forEach(([key, value]) => wrapper.style.setProperty(key, value));
 };
 
 const setupThemeObserver = () => {
@@ -230,41 +109,7 @@ const setupThemeObserver = () => {
   themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 };
 
-const applyThemeVariables = (dark: boolean) => {
-  const wrapper = document.querySelector('.mobile-pull-doc-wrapper') as HTMLElement;
-  if (!wrapper) return;
-
-  if (dark) {
-    wrapper.style.setProperty('--td-brand-color', '#1966ff');
-    wrapper.style.setProperty('--td-brand-color-light', '#1e3a5f');
-    wrapper.style.setProperty('--td-bg-color-container', '#1a1a1a');
-    wrapper.style.setProperty('--td-bg-color-container-hover', '#2d2d2d');
-    wrapper.style.setProperty('--td-border-level-1-color', '#3a3a3a');
-    wrapper.style.setProperty('--td-text-color-primary', '#cdd6f4');
-    wrapper.style.setProperty('--td-text-color-secondary', '#6c7086');
-    wrapper.style.setProperty('--td-text-color-placeholder', '#6c7086');
-    wrapper.style.setProperty('--panel-bg', '#1a1a1a');
-    wrapper.style.setProperty('--bg-secondary', '#2d2d2d');
-    wrapper.style.setProperty('--border-color', '#3a3a3a');
-    wrapper.style.setProperty('--text-primary', '#cdd6f4');
-    wrapper.style.setProperty('--text-placeholder', '#6c7086');
-  } else {
-    wrapper.style.setProperty('--td-brand-color', '#1966ff');
-    wrapper.style.setProperty('--td-brand-color-light', '#e6eef8');
-    wrapper.style.setProperty('--td-bg-color-container', '#ffffff');
-    wrapper.style.setProperty('--td-bg-color-container-hover', '#f5f5f5');
-    wrapper.style.setProperty('--td-border-level-1-color', '#e0e0e0');
-    wrapper.style.setProperty('--td-text-color-primary', '#333333');
-    wrapper.style.setProperty('--td-text-color-secondary', '#999999');
-    wrapper.style.setProperty('--td-text-color-placeholder', '#999999');
-    wrapper.style.setProperty('--panel-bg', '#ffffff');
-    wrapper.style.setProperty('--bg-secondary', '#f5f5f5');
-    wrapper.style.setProperty('--border-color', '#e0e0e0');
-    wrapper.style.setProperty('--text-primary', '#333333');
-    wrapper.style.setProperty('--text-placeholder', '#999999');
-  }
-};
-
+// 数据源
 const defaultSource = (): PullSource => ({
   type: 'github',
   baseUrl: props.githubRepo,
@@ -272,15 +117,16 @@ const defaultSource = (): PullSource => ({
   docsDir: props.docsDir,
 });
 
-const convertDocTreeToOptions = (nodes: DocTreeNode[]): any[] => {
-  return nodes.map(node => ({
+// 文档树转换
+const convertDocTreeToOptions = (nodes: DocTreeNode[]): any[] =>
+  nodes.map(node => ({
     label: node.name,
     value: node.path,
     isLeaf: node.type === 'file',
     children: node.type === 'directory' ? [] : undefined,
   }));
-};
 
+// 文档树加载
 const loadDocumentTree = async () => {
   isLoadingTree.value = true;
   try {
@@ -314,9 +160,28 @@ const loadChildren = async (path: string, parentNode: any) => {
   }
 };
 
+// 预览加载
+const loadPreview = async (path: string, source: PullSource) => {
+  isLoadingPreview.value = true;
+  try {
+    previewContent.value = await props.documentTreeService.previewDocument(path, source);
+    localExistence.value = await props.documentTreeService.checkLocalExistence(path);
+    if (!localSavePath.value && localExistence.value?.localPath) {
+      localSavePath.value = localExistence.value.localPath;
+    }
+  } catch {
+    previewContent.value = null;
+  } finally {
+    isLoadingPreview.value = false;
+  }
+};
+
+// 节点点击处理
 const handleNodeClick = async (node: any) => {
   if (!node.isLeaf) {
-    if (expandedKeys.value.includes(node.value)) {
+    // 展开/折叠目录
+    const isExpanded = expandedKeys.value.includes(node.value);
+    if (isExpanded) {
       expandedKeys.value = expandedKeys.value.filter(k => k !== node.value);
     } else {
       if (!loadedPaths.value.has(node.value)) {
@@ -325,30 +190,17 @@ const handleNodeClick = async (node: any) => {
       expandedKeys.value = [...expandedKeys.value, node.value];
     }
   } else {
+    // 选择文件
     selectedPath.value = node.value;
     activeTab.value = 'preview';
     pathExpanded.value = false;
     selectedSource.value = defaultSource();
     localSavePath.value = props.documentTreeService.analyzeSavePath(node.value, props.vaultRoot);
-
-    isLoadingPreview.value = true;
-    try {
-      console.log('[MobilePullDocModal] 预览文档:', node.value, selectedSource.value);
-      previewContent.value = await props.documentTreeService.previewDocument(node.value, selectedSource.value);
-      console.log('[MobilePullDocModal] 预览内容长度:', previewContent.value?.length);
-      localExistence.value = await props.documentTreeService.checkLocalExistence(node.value);
-      if (!localSavePath.value && localExistence.value?.localPath) {
-        localSavePath.value = localExistence.value.localPath;
-      }
-    } catch (error) {
-      console.error('[MobilePullDocModal] 预览失败:', error);
-      previewContent.value = null;
-    } finally {
-      isLoadingPreview.value = false;
-    }
+    await loadPreview(node.value, selectedSource.value);
   }
 };
 
+// URL 解析
 const handleUrlParse = async () => {
   const url = urlInputValue.value.trim();
   if (!url) return;
@@ -361,19 +213,7 @@ const handleUrlParse = async () => {
       activeTab.value = 'preview';
       selectedSource.value = result.source;
       localSavePath.value = props.documentTreeService.analyzeSavePath(result.path, props.vaultRoot);
-
-      isLoadingPreview.value = true;
-      try {
-        previewContent.value = await props.documentTreeService.previewDocument(result.path, result.source);
-        localExistence.value = await props.documentTreeService.checkLocalExistence(result.path);
-        if (!localSavePath.value && localExistence.value?.localPath) {
-          localSavePath.value = localExistence.value.localPath;
-        }
-      } catch {
-        previewContent.value = null;
-      } finally {
-        isLoadingPreview.value = false;
-      }
+      await loadPreview(result.path, result.source);
 
       if (result.title) {
         new Notice(`已定位：${result.title}`);
@@ -386,17 +226,15 @@ const handleUrlParse = async () => {
   }
 };
 
+// 搜索处理
 const handleSearch = () => {
-  if (!pattern.value.trim()) {
-    return;
-  }
+  const query = pattern.value.trim();
+  if (!query) return;
 
   const permalinkIndex = props.documentTreeService.getPermalinkIndex();
-  if (!permalinkIndex?.entries?.length) {
-    return;
-  }
+  if (!permalinkIndex?.entries?.length) return;
 
-  const lowerQuery = pattern.value.toLowerCase();
+  const lowerQuery = query.toLowerCase();
   const results: Array<PermalinkIndexEntry & { matchedField: string }> = [];
   const seen = new Set<string>();
 
@@ -419,36 +257,22 @@ const handleSearch = () => {
   results.sort((a, b) => (priority[a.matchedField] ?? 9) - (priority[b.matchedField] ?? 9));
 
   if (results.length > 0) {
-    const entry = results[0];
-    handleSearchResultSelect(entry);
+    handleSearchResultSelect(results[0]);
   }
 };
 
 const handleSearchResultSelect = async (entry: PermalinkIndexEntry) => {
   if (!entry.filePath) return;
 
-  const docsDir = props.docsDir || 'docs';
-  const cloudPath = `${docsDir}/${entry.filePath}`;
-
+  const cloudPath = `${props.docsDir || 'docs'}/${entry.filePath}`;
   selectedPath.value = cloudPath;
   activeTab.value = 'preview';
   selectedSource.value = defaultSource();
   localSavePath.value = props.documentTreeService.analyzeSavePath(cloudPath, props.vaultRoot);
-
-  isLoadingPreview.value = true;
-  try {
-    previewContent.value = await props.documentTreeService.previewDocument(cloudPath, selectedSource.value);
-    localExistence.value = await props.documentTreeService.checkLocalExistence(cloudPath);
-    if (!localSavePath.value && localExistence.value?.localPath) {
-      localSavePath.value = localExistence.value.localPath;
-    }
-  } catch {
-    previewContent.value = null;
-  } finally {
-    isLoadingPreview.value = false;
-  }
+  await loadPreview(cloudPath, selectedSource.value);
 };
 
+// 下载处理
 const handleDownload = async () => {
   if (!selectedPath.value || !selectedSource.value || !localSavePath.value) {
     new Notice('请先选择要下载的文档');
@@ -464,9 +288,11 @@ const handleDownload = async () => {
   }
 };
 
-const handleClose = () => {
-  props.onClose();
-};
+const handleClose = () => props.onClose();
+
+// Markdown 渲染
+const escapeHtml = (text: string): string =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const renderWithObsidian = async (content: string, el: HTMLElement) => {
   try {
@@ -477,43 +303,34 @@ const renderWithObsidian = async (content: string, el: HTMLElement) => {
   }
 };
 
-const escapeHtml = (text: string): string => {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-};
+const tryRenderPreview = async (content: string) => {
+  if (!content || !isRenderedMode.value) return;
 
-const tryRenderPreview = async (content: string, mode: string) => {
-  if (mode !== 'rendered' || !content) return;
-
-  const renderKey = `${mode}::${content.substring(0, 100)}`;
+  const renderKey = `rendered::${content.substring(0, 100)}`;
   if (renderKey === lastRenderedKey) return;
   lastRenderedKey = renderKey;
 
-  const maxRetries = 5;
   let retries = 0;
+  const maxRetries = 5;
 
   const attemptRender = async () => {
     await nextTick();
     if (renderedEl.value) {
-      console.log('[MobilePullDocModal] 开始渲染 markdown');
       await renderWithObsidian(content, renderedEl.value);
-      console.log('[MobilePullDocModal] 渲染完成');
     } else if (retries < maxRetries) {
       retries++;
-      console.log(`[MobilePullDocModal] renderedEl 还未准备好，重试 ${retries}/${maxRetries}`);
       setTimeout(attemptRender, 50);
-    } else {
-      console.warn('[MobilePullDocModal] renderedEl 始终未准备好');
     }
   };
 
   attemptRender();
 };
 
+// 监听
 watch([previewContent, isRenderedMode], async ([content, rendered]) => {
-  console.log('[MobilePullDocModal] previewContent changed:', { contentLength: content?.length, rendered, hasRenderedEl: !!renderedEl.value });
-  if (rendered) {
+  if (rendered && content) {
     lastRenderedKey = '';
-    await tryRenderPreview(content || '', 'rendered');
+    await tryRenderPreview(content);
   }
 });
 
@@ -529,16 +346,166 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (themeObserver) {
-    themeObserver.disconnect();
-    themeObserver = null;
-  }
+  themeObserver?.disconnect();
   renderComponent.unload();
 });
 </script>
 
+<template>
+  <div class="mobile-pull-doc-wrapper" :class="{ 'is-dark': isDark }">
+    <div class="mobile-overlay" @click.self="handleClose">
+      <div class="mobile-panel">
+        <div class="panel-header">
+          <span class="panel-title">从云端拉取文档</span>
+          <t-button variant="text" size="small" class="close-btn" @click="handleClose">
+            <CloseIcon />
+          </t-button>
+        </div>
+
+        <div class="panel-content">
+          <t-tabs v-model="activeTab" :line-width="30" class="doc-tabs">
+            <t-tab-panel value="select">
+              <template #label>
+                <span class="tab-label">
+                  📁 选择
+                  <t-badge :count="selectedPath ? 1 : 0" :max-count="99" :offset="[0, -2]" />
+                </span>
+              </template>
+
+              <div class="select-content">
+                <t-input
+                  v-model="pattern"
+                  placeholder="搜索文档..."
+                  clearable
+                  class="search-input"
+                  @input="handleSearch"
+                />
+
+                <div v-if="isLoadingTree" class="loading-container">
+                  <t-loading size="medium" />
+                  <t-text class="loading-text">加载文档树...</t-text>
+                </div>
+
+                <div v-else class="doc-tree">
+                  <template v-for="node in treeData" :key="node.value">
+                    <div
+                      class="tree-node"
+                      @click="handleNodeClick(node)"
+                    >
+                      <span
+                        v-if="!node.isLeaf"
+                        class="expand-icon"
+                        :class="{ expanded: expandedKeys.includes(node.value) }"
+                      >▶</span>
+                      <span v-else class="expand-placeholder"></span>
+                      <span>{{ node.isLeaf ? '📄' : '📁' }}</span>
+                      <span class="tree-label">{{ node.label }}</span>
+                    </div>
+                    <template v-if="!node.isLeaf && expandedKeys.includes(node.value) && node.children?.length">
+                      <div
+                        v-for="child in node.children"
+                        :key="child.value"
+                        class="tree-child-node"
+                        @click="handleNodeClick(child)"
+                      >
+                        <span>{{ child.isLeaf ? '📄' : '📁' }}</span>
+                        <span class="tree-label">{{ child.label }}</span>
+                      </div>
+                    </template>
+                  </template>
+                </div>
+
+                <t-divider class="section-divider" />
+
+                <t-input
+                  v-model="urlInputValue"
+                  placeholder="粘贴文档链接..."
+                  class="url-input"
+                  @keyup.enter="handleUrlParse"
+                />
+                <t-button
+                  :loading="isParsingUrl"
+                  class="parse-btn"
+                  @click="handleUrlParse"
+                >
+                  解析
+                </t-button>
+                <t-text class="url-hint">支持 GitHub 文件链接、Raw 链接、站点文档链接</t-text>
+              </div>
+            </t-tab-panel>
+
+            <t-tab-panel value="preview">
+              <template #label>
+                <span class="tab-label">👁️ 预览</span>
+              </template>
+
+              <div v-if="!selectedPath" class="empty-preview">
+                <t-text>请先选择或解析文档</t-text>
+              </div>
+
+              <template v-else>
+                <div class="doc-info">
+                  <div class="info-row clickable" @click="pathExpanded = !pathExpanded">
+                    <div class="info-label-group">
+                      <span class="info-label">云端路径</span>
+                      <span class="expand-arrow" :class="{ expanded: pathExpanded }">▶</span>
+                    </div>
+                    <span :class="['info-value', { truncated: !pathExpanded }]">{{ selectedPath }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">本地状态</span>
+                    <span class="info-value">{{ localExistence?.exists ? '已存在' : '不存在' }}</span>
+                  </div>
+                  <div class="info-input">
+                    <t-input v-model="localSavePath" placeholder="保存路径" size="small" />
+                  </div>
+                </div>
+
+                <div class="preview-section">
+                  <div class="preview-header">
+                    <span class="preview-title">渲染模式</span>
+                    <t-switch v-model="isRenderedMode" :label="['渲染', '源码']" />
+                  </div>
+
+                  <div class="preview-container">
+                    <div v-if="isLoadingPreview" class="loading-container">
+                      <t-loading size="medium" />
+                      <t-text class="loading-text">加载预览中...</t-text>
+                    </div>
+                    <template v-else>
+                      <pre v-if="!isRenderedMode" class="source-preview">{{ previewContent }}</pre>
+                      <div v-else ref="renderedEl" class="rendered-preview markdown-rendered"></div>
+                    </template>
+                    <div v-if="!isLoadingPreview && !previewContent" class="empty-preview">
+                      <t-empty description="无预览内容" />
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </t-tab-panel>
+          </t-tabs>
+        </div>
+
+        <div class="panel-footer">
+          <t-button variant="outline" class="cancel-btn" @click="handleClose">
+            取消
+          </t-button>
+          <t-button
+            :disabled="!selectedPath || !localSavePath || isDownloading"
+            :loading="isDownloading"
+            class="download-btn"
+            @click="handleDownload"
+          >
+            {{ localExistence?.exists ? '下载/覆盖' : '下载文档' }}
+          </t-button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <style>
-/* TDesign CSS Variables */
+/* CSS Variables */
 .mobile-pull-doc-wrapper {
   --td-brand-color: #1966ff;
   --td-brand-color-light: #e6eef8;
@@ -550,13 +517,18 @@ onUnmounted(() => {
   --td-text-color-secondary: #999999;
   --td-text-color-placeholder: #999999;
   --td-text-color-disabled: #cccccc;
-
-  /* Custom Variables */
   --panel-bg: #ffffff;
   --bg-secondary: #f5f5f5;
   --border-color: #e0e0e0;
   --text-primary: #333333;
   --text-placeholder: #999999;
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
 }
 
 .mobile-pull-doc-wrapper.is-dark {
@@ -570,8 +542,6 @@ onUnmounted(() => {
   --td-text-color-secondary: #6c7086;
   --td-text-color-placeholder: #6c7086;
   --td-text-color-disabled: #4a4a4a;
-
-  /* Custom Variables */
   --panel-bg: #1a1a1a;
   --bg-secondary: #2d2d2d;
   --border-color: #3a3a3a;
@@ -579,82 +549,271 @@ onUnmounted(() => {
   --text-placeholder: #6c7086;
 }
 
-.mobile-pull-doc-wrapper .mobile-panel {
+/* Layout */
+.mobile-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+}
+
+.mobile-panel {
+  position: relative;
+  width: 100%;
   background: var(--panel-bg);
+  border-radius: 16px 16px 0 0;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.mobile-pull-doc-wrapper .panel-header {
-  border-color: var(--border-color);
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.mobile-pull-doc-wrapper .panel-title {
+.panel-title {
+  font-size: 18px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
-.mobile-pull-doc-wrapper .panel-content {
-  background: var(--panel-bg);
+.close-btn {
+  padding: 4px;
 }
 
-.mobile-pull-doc-wrapper .doc-tree .tree-node,
-.mobile-pull-doc-wrapper .tree-child-node {
-  border-color: var(--border-color);
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
 }
 
-.mobile-pull-doc-wrapper .tree-label,
-.mobile-pull-doc-wrapper .info-label,
-.mobile-pull-doc-wrapper .info-value {
-  color: var(--text-primary);
+.panel-footer {
+  display: flex;
+  padding: 16px 20px;
+  gap: 12px;
+  border-top: 1px solid var(--border-color);
 }
 
-.mobile-pull-doc-wrapper .doc-info {
-  background: var(--bg-secondary);
+/* Tabs */
+.doc-tabs {
+  --td-tab-nav-bg-color: transparent;
 }
 
-.mobile-pull-doc-wrapper .preview-header .preview-title {
-  color: var(--text-primary);
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.mobile-pull-doc-wrapper .panel-footer {
-  border-color: var(--border-color);
+/* Select Tab */
+.select-content {
+  margin-top: 12px;
 }
 
-.mobile-pull-doc-wrapper .cancel-btn {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border-color: var(--border-color);
+.search-input {
+  margin-bottom: 12px;
 }
 
-.mobile-pull-doc-wrapper .t-tabs__content {
-  color: var(--text-primary);
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
 }
 
-.mobile-pull-doc-wrapper .expand-icon {
+.loading-text {
+  display: block;
+  margin-top: 12px;
   color: var(--text-placeholder);
 }
 
-.mobile-pull-doc-wrapper .expand-icon.expanded {
+.doc-tree {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tree-node,
+.tree-child-node {
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tree-child-node {
+  padding: 10px 12px 10px 36px;
+}
+
+.expand-icon {
+  transition: transform 0.2s;
+  display: inline-block;
+  color: var(--text-placeholder);
+}
+
+.expand-icon.expanded {
   transform: rotate(90deg);
 }
 
-.mobile-pull-doc-wrapper .rendered-preview {
+.expand-placeholder {
+  width: 16px;
+  display: inline-block;
+}
+
+.tree-label {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.section-divider {
+  margin: 16px 0;
+}
+
+.url-input {
+  margin-bottom: 12px;
+}
+
+.parse-btn {
+  width: 100%;
+}
+
+.url-hint {
+  font-size: 12px;
+  color: var(--text-placeholder);
+  display: block;
+  margin-top: 8px;
+}
+
+/* Preview Tab */
+.empty-preview {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-placeholder);
+}
+
+.doc-info {
+  margin-top: 12px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.info-row.clickable {
+  cursor: pointer;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.expand-arrow {
+  transition: transform 0.2s;
+  color: var(--text-secondary);
+}
+
+.expand-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.info-value {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.info-value.truncated {
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-input {
+  padding-top: 8px;
+}
+
+.preview-section {
+  margin-top: 16px;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.preview-title {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.preview-container {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  min-height: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.source-preview {
+  padding: 12px;
+  font-family: Monaco, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.rendered-preview {
+  padding: 12px;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
 }
 
-.mobile-pull-doc-wrapper .rendered-preview h1,
-.mobile-pull-doc-wrapper .rendered-preview h2,
-.mobile-pull-doc-wrapper .rendered-preview h3 {
+.rendered-preview h1,
+.rendered-preview h2,
+.rendered-preview h3 {
   margin-top: 1em;
   margin-bottom: 0.5em;
   font-weight: 600;
 }
 
-.mobile-pull-doc-wrapper .rendered-preview p {
+.rendered-preview p {
   margin: 0.5em 0;
 }
 
-.mobile-pull-doc-wrapper .rendered-preview code {
+.rendered-preview code {
   background: var(--bg-secondary);
   padding: 2px 6px;
   border-radius: 4px;
@@ -662,19 +821,25 @@ onUnmounted(() => {
   font-size: 0.9em;
 }
 
-.mobile-pull-doc-wrapper .rendered-preview pre {
+.rendered-preview pre {
   background: var(--bg-secondary);
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
 }
 
-.mobile-pull-doc-wrapper .rendered-preview pre code {
+.rendered-preview pre code {
   background: none;
   padding: 0;
 }
 
-/* TDesign Component Overrides */
+/* Footer Buttons */
+.cancel-btn,
+.download-btn {
+  flex: 1;
+}
+
+/* TDesign Overrides */
 .mobile-pull-doc-wrapper .t-tabs__item {
   color: var(--text-placeholder);
 }
@@ -689,34 +854,6 @@ onUnmounted(() => {
 
 .mobile-pull-doc-wrapper .t-button--variant-outline {
   border-color: var(--border-color);
-  color: var(--text-primary);
-}
-
-.mobile-pull-doc-wrapper .t-input {
-  border-color: var(--border-color);
-}
-
-.mobile-pull-doc-wrapper .t-input__label {
-  color: var(--text-primary);
-}
-
-.mobile-pull-doc-wrapper .t-textarea {
-  border-color: var(--border-color);
-}
-
-.mobile-pull-doc-wrapper .t-cell {
-  border-color: var(--border-color);
-}
-
-.mobile-pull-doc-wrapper .t-cell__title {
-  color: var(--text-primary);
-}
-
-.mobile-pull-doc-wrapper .t-cell__value {
-  color: var(--text-secondary);
-}
-
-.mobile-pull-doc-wrapper .t-checkbox__label {
   color: var(--text-primary);
 }
 </style>

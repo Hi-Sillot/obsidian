@@ -1,156 +1,3 @@
-<template>
-  <div class="mobile-config-editor-wrapper" :class="{ 'is-dark': isDark }" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;">
-    <div class="editor-overlay" @click.self="handleClose" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: flex-end;">
-      <div class="editor-panel" style="position: relative; width: 100%; background: var(--panel-bg, #fff); border-radius: 16px 16px 0 0; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;">
-        <div class="panel-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-color, #e0e0e0);">
-          <span style="font-size: 18px; font-weight: 600; color: var(--text-primary, #333);">{{ modalTitle }}</span>
-          <t-button variant="text" size="small" @click="handleClose" style="padding: 4px;">
-            <CloseIcon />
-          </t-button>
-        </div>
-
-        <t-tabs v-model="activeTab" :line-width="30" style="--td-tab-nav-bg-color: transparent; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-          <t-tab-panel value="config" label="配置文件">
-            <div class="tab-content" style="flex: 1; overflow-y: auto; padding: 16px 20px;">
-              <div
-                style="padding: 12px 16px; background: var(--bg-secondary, #f5f5f5); border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"
-                @click="showConfigPicker = true"
-              >
-                <span style="color: var(--text-primary, #333);">{{ getConfigTitle(selectedConfigType) }}</span>
-                <span style="color: var(--text-placeholder, #999);">▼</span>
-              </div>
-
-              <div style="margin-bottom: 12px; font-size: 12px; color: var(--text-placeholder, #999);">
-                文件路径: {{ currentConfigPath }}
-              </div>
-
-              <t-textarea
-                v-model="configContent"
-                placeholder="配置内容"
-                :autosize="{ minRows: 6, maxRows: 13 }"
-                :disabled="loading"
-                style="font-family: Monaco, Menlo, monospace; font-size: 13px;"
-              />
-
-              <t-loading v-if="loading" size="small" style="text-align: center; padding: 12px;" />
-
-              <div v-if="validationErrors.length > 0" style="margin-top: 12px; color: #e34a4a; font-size: 12px;">
-                <div v-for="(err, idx) in validationErrors" :key="idx" style="margin: 4px 0;">{{ err }}</div>
-              </div>
-            </div>
-          </t-tab-panel>
-
-          <t-tab-panel value="vuepress" label=".vuepress">
-            <div class="tab-content" style="flex: 1; overflow-y: auto; padding: 16px 20px;">
-              <div
-                style="padding: 12px 16px; background: var(--bg-secondary, #f5f5f5); border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"
-                @click="openVuepressPicker"
-              >
-                <span style="color: var(--text-primary, #333);">{{ getVuepressFileName(selectedVuepressPath) || '选择文件' }}</span>
-                <span style="color: var(--text-placeholder, #999);">▼</span>
-              </div>
-
-              <div style="margin-bottom: 12px; font-size: 12px; color: var(--text-placeholder, #999);">
-                文件路径: {{ selectedVuepressPath }}
-              </div>
-
-              <t-textarea
-                v-model="vuepressContent"
-                placeholder=".vuepress 配置内容"
-                :autosize="{ minRows: 6, maxRows: 20 }"
-                :disabled="loadingVuepress"
-                style="font-family: Monaco, Menlo, monospace; font-size: 13px;"
-              />
-
-              <t-loading v-if="loadingVuepress" size="small" style="text-align: center; padding: 12px;" />
-
-              <div v-if="vuepressErrors.length > 0" style="margin-top: 12px; color: #e34a4a; font-size: 12px;">
-                <div v-for="(err, idx) in vuepressErrors" :key="idx" style="margin: 4px 0;">{{ err }}</div>
-              </div>
-            </div>
-          </t-tab-panel>
-        </t-tabs>
-
-        <div class="panel-footer" style="display: flex; flex-direction: column; padding: 16px 20px; gap: 12px; border-top: 1px solid var(--border-color, #e0e0e0);">
-          <t-checkbox v-model="createPR" style="display: flex; align-items: center;">
-            创建 Pull Request
-          </t-checkbox>
-          <div style="display: flex; gap: 12px;">
-            <t-button @click="handleClose" variant="outline" style="flex: 1;">
-              取消
-            </t-button>
-            <t-button
-              @click="handleSave"
-              :disabled="!canSave || saving"
-              :loading="saving"
-              style="flex: 1; background: #1966ff; border-color: #1966ff; color: #fff;"
-            >
-              保存
-            </t-button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <t-popup
-      v-if="showConfigPicker"
-      v-model:visible="showConfigPicker"
-      placement="bottom"
-      :close-on-overlay-click="true"
-    >
-      <t-picker
-        v-if="configPickerColumns.length > 0"
-        :columns="configPickerColumns"
-        @confirm="onConfigPickerConfirm"
-        @cancel="showConfigPicker = false"
-      />
-    </t-popup>
-
-    <t-popup
-      v-if="showVuepressPicker"
-      v-model:visible="showVuepressPicker"
-      placement="bottom"
-      :close-on-overlay-click="true"
-    >
-      <t-picker
-        v-if="vuepressPickerColumns.length > 0"
-        :columns="vuepressPickerColumns"
-        @confirm="onVuepressPickerConfirm"
-        @cancel="showVuepressPicker = false"
-      />
-      <div v-else style="padding: 24px; text-align: center; background: var(--panel-bg, #fff);">
-        <t-empty description="暂无可选配置文件" />
-      </div>
-    </t-popup>
-
-    <t-popup v-model:visible="showProgress" placement="center" close-on-click-overlay>
-      <div style="width: 80vw; max-width: 300px; background: var(--panel-bg, #fff); border-radius: 12px; padding: 24px; text-align: center;">
-        <h4 style="margin: 0 0 16px; color: var(--text-primary, #333);">保存中...</h4>
-        <t-progress :percentage="progressPercent" style="margin-bottom: 12px;" />
-        <t-text style="font-size: 12px; color: var(--text-placeholder, #999);">{{ progressMessage }}</t-text>
-      </div>
-    </t-popup>
-
-    <t-popup v-model:visible="showResult" placement="center" close-on-click-overlay>
-      <div style="width: 80vw; max-width: 300px; background: var(--panel-bg, #fff); border-radius: 12px; padding: 24px; text-align: center;">
-        <t-result
-          :theme="resultSuccess ? 'success' : 'error'"
-          :title="resultSuccess ? (createPR ? 'PR 创建成功' : '保存成功') : '保存失败'"
-        >
-          <template #extra>
-            <t-button v-if="resultSuccess && prUrl" tag="a" :href="prUrl" target="_blank" variant="primary" size="small">
-              查看 PR
-            </t-button>
-            <t-button @click="showResult = false" size="small" style="margin-left: 8px;">
-              关闭
-            </t-button>
-          </template>
-        </t-result>
-      </div>
-    </t-popup>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { CloseIcon } from 'tdesign-icons-vue-next';
@@ -174,28 +21,41 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'saved'): void;
+  close: [];
+  saved: [];
 }>();
 
+// 主题相关
 const isDark = ref(false);
+let themeObserver: MutationObserver | null = null;
+let viewportObserver: ResizeObserver | null = null;
+
+// 标签页状态
 const activeTab = ref('config');
+
+// 配置编辑器状态
 const selectedConfigType = ref('friends');
 const configContent = ref('');
 const originalConfigContent = ref('');
 const currentConfigPath = ref('');
 const loading = ref(false);
 const validationErrors = ref<string[]>([]);
+const showConfigPicker = ref(false);
+const configPickerColumns = ref<PickerColumn[]>([
+  { label: 'friends.md', value: 'friends' },
+  { label: 'README.md', value: 'readme' },
+]);
 
+// VuePress 编辑器状态
 const vuepressContent = ref('');
 const originalVuepressContent = ref('');
-const vuepressPath = ref('');
 const selectedVuepressPath = ref('');
 const loadingVuepress = ref(false);
 const vuepressErrors = ref<string[]>([]);
 const showVuepressPicker = ref(false);
 const vuepressPickerColumns = ref<PickerColumn[]>([]);
 
+// 保存相关状态
 const createPR = ref(true);
 const prAttemptFailed = ref(false);
 const saving = ref(false);
@@ -205,84 +65,65 @@ const progressMessage = ref('');
 const showResult = ref(false);
 const resultSuccess = ref(false);
 const prUrl = ref('');
-const showConfigPicker = ref(false);
-const configPickerColumns = ref<PickerColumn[]>([]);
 
 const modalTitle = computed(() => `编辑配置文件 - ${props.pluginName}`);
 
-const hasConfigDiff = computed(() => {
-  void activeTab.value;
-  return configContent.value !== originalConfigContent.value;
-});
-const hasVuepressDiff = computed(() => {
-  void activeTab.value;
-  return vuepressContent.value !== originalVuepressContent.value;
-});
+const hasConfigDiff = computed(() => configContent.value !== originalConfigContent.value);
+const hasVuepressDiff = computed(() => vuepressContent.value !== originalVuepressContent.value);
 
-watch(hasConfigDiff, (newVal, oldVal) => {
-  if (newVal && !oldVal) {
-    prAttemptFailed.value = false;
+const canSave = computed(() => {
+  const hasDiff = activeTab.value === 'config' ? hasConfigDiff.value : hasVuepressDiff.value;
+  if (!hasDiff) return false;
+
+  if (activeTab.value === 'config') {
+    return configContent.value.trim().length > 0 && validationErrors.value.length === 0;
   }
+  return vuepressContent.value.trim().length > 0 && vuepressErrors.value.length === 0;
 });
 
-watch(hasVuepressDiff, (newVal, oldVal) => {
-  if (newVal && !oldVal) {
+watch([hasConfigDiff, hasVuepressDiff], ([configNew, vueNew], [configOld, vueOld]) => {
+  if ((configNew && !configOld) || (vueNew && !vueOld)) {
     prAttemptFailed.value = false;
   }
 });
 
 watch([showResult, resultSuccess], ([show, success]) => {
   if (show && success) {
-    setTimeout(() => {
-      showResult.value = false;
-    }, 1500);
+    setTimeout(() => { showResult.value = false; }, 1500);
   }
 });
 
-const canSave = computed(() => {
-  const hasDiff = activeTab.value === 'config'
-    ? configContent.value !== originalConfigContent.value
-    : vuepressContent.value !== originalVuepressContent.value;
-  if (!hasDiff) return false;
-  const hasContent = activeTab.value === 'config'
-    ? configContent.value.trim().length > 0 && validationErrors.value.length === 0
-    : vuepressContent.value.trim().length > 0 && vuepressErrors.value.length === 0;
-  return hasContent;
-});
-
-let themeObserver: MutationObserver | null = null;
-let viewportObserver: ResizeObserver | null = null;
-
+// 主题管理
 const detectTheme = () => {
   isDark.value = document.body.classList.contains('theme-dark');
 };
 
 const applyThemeVariables = (dark: boolean) => {
   const root = document.documentElement;
+  const theme = dark ? {
+    '--panel-bg': '#1a1a1a',
+    '--bg-secondary': '#2d2d2d',
+    '--border-color': '#3a3a3a',
+    '--text-primary': '#cdd6f4',
+    '--text-placeholder': '#6c7086',
+    '--td-popup-bg-color': '#1a1a1a',
+    '--td-picker-bg-color': '#1a1a1a',
+    '--td-picker-mask-color-bottom': 'rgba(26, 26, 26, 0.4)',
+    '--td-picker-mask-color-top': 'rgba(26, 26, 26, 0.92)',
+  } : {
+    '--panel-bg': '#ffffff',
+    '--bg-secondary': '#f5f5f5',
+    '--border-color': '#e0e0e0',
+    '--text-primary': '#333333',
+    '--text-placeholder': '#999999',
+    '--td-popup-bg-color': '#ffffff',
+    '--td-picker-bg-color': '#ffffff',
+    '--td-picker-mask-color-bottom': 'hsla(0, 0%, 100%, 0.4)',
+    '--td-picker-mask-color-top': 'hsla(0, 0%, 100%, 0.92)',
+  };
 
-  if (dark) {
-    document.documentElement.setAttribute('theme-mode', 'dark');
-    root.style.setProperty('--panel-bg', '#1a1a1a');
-    root.style.setProperty('--bg-secondary', '#2d2d2d');
-    root.style.setProperty('--border-color', '#3a3a3a');
-    root.style.setProperty('--text-primary', '#cdd6f4');
-    root.style.setProperty('--text-placeholder', '#6c7086');
-    root.style.setProperty('--td-popup-bg-color', '#1a1a1a');
-    root.style.setProperty('--td-picker-bg-color', '#1a1a1a');
-    root.style.setProperty('--td-picker-mask-color-bottom', 'rgba(26, 26, 26, 0.4)');
-    root.style.setProperty('--td-picker-mask-color-top', 'rgba(26, 26, 26, 0.92)');
-  } else {
-    document.documentElement.removeAttribute('theme-mode');
-    root.style.setProperty('--panel-bg', '#ffffff');
-    root.style.setProperty('--bg-secondary', '#f5f5f5');
-    root.style.setProperty('--border-color', '#e0e0e0');
-    root.style.setProperty('--text-primary', '#333333');
-    root.style.setProperty('--text-placeholder', '#999999');
-    root.style.setProperty('--td-popup-bg-color', '#ffffff');
-    root.style.setProperty('--td-picker-bg-color', '#ffffff');
-    root.style.setProperty('--td-picker-mask-color-bottom', 'hsla(0, 0%, 100%, 0.4)');
-    root.style.setProperty('--td-picker-mask-color-top', 'hsla(0, 0%, 100%, 0.92)');
-  }
+  Object.entries(theme).forEach(([key, value]) => root.style.setProperty(key, value));
+  document.documentElement.toggleAttribute('theme-mode', dark);
 };
 
 const setupThemeObserver = () => {
@@ -297,58 +138,72 @@ const setupThemeObserver = () => {
 
 const setupViewportObserver = () => {
   const editorEl = document.querySelector('.mobile-config-editor-wrapper');
-  if (!editorEl) return;
-  
+  if (!editorEl || !window.visualViewport) return;
+
   viewportObserver = new ResizeObserver(() => {
-    const visualViewport = window.visualViewport;
-    if (visualViewport) {
-      const offsetBottom = window.innerHeight - visualViewport.height - visualViewport.offsetTop;
-      if (offsetBottom > 0) {
-        (editorEl as HTMLElement).style.setProperty('--keyboard-offset', `${offsetBottom}px`);
-      } else {
-        (editorEl as HTMLElement).style.setProperty('--keyboard-offset', '0px');
-      }
-    }
+    const vv = window.visualViewport!;
+    const offsetBottom = window.innerHeight - vv.height - vv.offsetTop;
+    (editorEl as HTMLElement).style.setProperty('--keyboard-offset', offsetBottom > 0 ? `${offsetBottom}px` : '0px');
   });
-  
-  if (window.visualViewport) {
-    viewportObserver.observe(document.body);
+  viewportObserver.observe(document.body);
+};
+
+// 辅助函数
+const getConfigTitle = (type: string) => {
+  const option = configPickerColumns.value.find(o => o.value === type);
+  return option?.label ?? type;
+};
+
+const getVuepressFileName = (path: string) => path?.split('/').pop() ?? path ?? '';
+
+// 数据加载
+const loadConfig = async () => {
+  loading.value = true;
+  validationErrors.value = [];
+
+  try {
+    const content = await props.api.fetchConfig(selectedConfigType.value as any);
+    configContent.value = content ?? '';
+    originalConfigContent.value = content ?? '';
+    const validation = props.api.validateConfig(selectedConfigType.value as any, configContent.value);
+    validationErrors.value = validation.errors;
+  } catch (error: any) {
+    validationErrors.value = [error.message];
+  } finally {
+    loading.value = false;
   }
 };
 
-const getConfigTitle = (type: string) => {
-  const option = configPickerColumns.value.find(o => o.value === type);
-  return option ? option.label : type;
-};
+const loadVuepressConfig = async () => {
+  loadingVuepress.value = true;
+  vuepressErrors.value = [];
 
-const getVuepressFileName = (path: string) => {
-  if (!path) return '';
-  return path.split('/').pop() || path;
+  try {
+    if (!selectedVuepressPath.value) {
+      vuepressErrors.value = ['未选择文件'];
+      return;
+    }
+    const content = await props.api.fetchFileContent(selectedVuepressPath.value);
+    vuepressContent.value = content ?? '';
+    originalVuepressContent.value = content ?? '';
+  } catch (error: any) {
+    vuepressErrors.value = [error.message];
+  } finally {
+    loadingVuepress.value = false;
+  }
 };
 
 const init = async () => {
   loading.value = true;
   try {
-    configPickerColumns.value = [
-      { label: 'friends.md', value: 'friends' },
-      { label: 'README.md', value: 'readme' },
-    ];
-
     selectedConfigType.value = 'friends';
     currentConfigPath.value = props.api.getConfigPath('friends');
-    vuepressPath.value = props.api.getConfigPath('vuepress');
 
     try {
       const vuepressFiles = await props.api.fetchVuePressFiles();
-      console.log('[MobileConfigEditor] vuepressFiles:', vuepressFiles);
-
       vuepressPickerColumns.value = vuepressFiles
         .filter(f => f.type === 'file')
-        .map(f => ({
-          label: f.name,
-          value: f.path,
-        }));
-      console.log('[MobileConfigEditor] vuepressPickerColumns:', vuepressPickerColumns.value);
+        .map(f => ({ label: f.name, value: f.path }));
     } catch (e) {
       console.error('[MobileConfigEditor] fetchVuePressFiles error:', e);
     }
@@ -366,17 +221,14 @@ const init = async () => {
   }
 };
 
+// 事件处理
 const openVuepressPicker = () => {
-  console.log('[MobileConfigEditor] openVuepressPicker, columns:', vuepressPickerColumns.value.length);
-  console.log('[MobileConfigEditor] selectedVuepressPath:', selectedVuepressPath.value);
   if (vuepressPickerColumns.value.length > 0) {
     showVuepressPicker.value = true;
-  } else {
-    console.warn('[MobileConfigEditor] vuepressPickerColumns 为空，无法打开选择器');
   }
 };
 
-const onVuepressPickerConfirm = async (value: string[], context: { index: number[]; label: string[] }) => {
+const onVuepressPickerConfirm = async (value: string[]) => {
   const selectedValue = value[0];
   if (selectedValue) {
     selectedVuepressPath.value = selectedValue;
@@ -385,7 +237,7 @@ const onVuepressPickerConfirm = async (value: string[], context: { index: number
   }
 };
 
-const onConfigPickerConfirm = async (value: string[], context: { index: number[]; label: string[] }) => {
+const onConfigPickerConfirm = async (value: string[]) => {
   const selectedValue = value[0];
   if (selectedValue) {
     selectedConfigType.value = selectedValue;
@@ -395,48 +247,48 @@ const onConfigPickerConfirm = async (value: string[], context: { index: number[]
   }
 };
 
-const loadConfig = async () => {
-  loading.value = true;
-  validationErrors.value = [];
+const handleClose = () => emit('close');
 
-  try {
-    const content = await props.api.fetchConfig(selectedConfigType.value as any);
-    configContent.value = content || '';
-    originalConfigContent.value = content || '';
-    const validation = props.api.validateConfig(selectedConfigType.value as any, configContent.value);
-    validationErrors.value = validation.errors;
-  } catch (error: any) {
-    validationErrors.value = [error.message];
-  } finally {
-    loading.value = false;
-  }
-};
+const handleSaveResult = (result: any, isVuepress: boolean) => {
+  showProgress.value = false;
 
-const loadVuepressConfig = async () => {
-  loadingVuepress.value = true;
-  vuepressErrors.value = [];
+  if (result.success) {
+    resultSuccess.value = true;
+    prUrl.value = result.prUrl ?? '';
+    prAttemptFailed.value = false;
 
-  try {
-    console.log('[MobileConfigEditor] loadVuepressConfig, path:', selectedVuepressPath.value);
-    if (!selectedVuepressPath.value) {
-      vuepressErrors.value = ['未选择文件'];
-      return;
+    if (isVuepress) {
+      originalVuepressContent.value = vuepressContent.value;
+    } else {
+      originalConfigContent.value = configContent.value;
     }
-    const content = await props.api.fetchFileContent(selectedVuepressPath.value);
-    console.log('[MobileConfigEditor] loadVuepressConfig, content length:', content?.length);
-    vuepressContent.value = content || '';
-    originalVuepressContent.value = content || '';
-    vuepressErrors.value = [];
-  } catch (error: any) {
-    console.error('[MobileConfigEditor] loadVuepressConfig error:', error);
-    vuepressErrors.value = [error.message];
-  } finally {
-    loadingVuepress.value = false;
-  }
-};
 
-const handleClose = () => {
-  emit('close');
+    if (result.prNumber && result.branch && props.prCheckPoller && props.openPRCheckModal) {
+      props.prCheckPoller.startPolling(
+        String(result.prNumber),
+        {
+          prNumber: result.prNumber,
+          branch: result.branch,
+          headSha: result.commitSha ?? '',
+          filePath: '',
+          startedAt: Date.now(),
+        },
+        () => props.gitHubApi!,
+      );
+      props.openPRCheckModal(result.prNumber, result.branch);
+    }
+  } else {
+    resultSuccess.value = false;
+    prAttemptFailed.value = createPR.value;
+    const errors = [result.error ?? '保存失败'];
+    if (isVuepress) {
+      vuepressErrors.value = errors;
+    } else {
+      validationErrors.value = errors;
+    }
+  }
+
+  showResult.value = true;
 };
 
 const handleSave = async () => {
@@ -446,98 +298,42 @@ const handleSave = async () => {
   progressMessage.value = '准备保存...';
 
   try {
-    if (activeTab.value === 'config') {
-      const validation = props.api.validateConfig(selectedConfigType.value as any, configContent.value);
-      if (!validation.valid) {
-        validationErrors.value = validation.errors;
-        showProgress.value = false;
-        saving.value = false;
-        return;
-      }
+    const isVuepress = activeTab.value !== 'config';
+    const content = isVuepress ? vuepressContent.value : configContent.value;
+    const type = isVuepress ? 'vuepress' : selectedConfigType.value as any;
 
-      const result = await props.api.updateConfig(selectedConfigType.value as any, configContent.value, {
-        createPR: createPR.value,
-        commitMessage: `更新配置文件 via Sillot`,
-        onProgress: (percent: number, msg: string) => {
-          progressPercent.value = percent;
-          progressMessage.value = msg;
-        },
-      });
-
-      showProgress.value = false;
-      if (result.success) {
-        resultSuccess.value = true;
-        prUrl.value = result.prUrl || '';
-        prAttemptFailed.value = false;
-        originalConfigContent.value = configContent.value;
-        if (result.prNumber && result.branch && props.prCheckPoller && props.openPRCheckModal) {
-          props.prCheckPoller.startPolling(
-            String(result.prNumber),
-            {
-              prNumber: result.prNumber,
-              branch: result.branch,
-              headSha: result.commitSha ?? '',
-              filePath: '',
-              startedAt: Date.now(),
-            },
-            () => props.gitHubApi!,
-          );
-          props.openPRCheckModal(result.prNumber, result.branch);
-        }
-        originalVuepressContent.value = vuepressContent.value;
-      } else {
-        resultSuccess.value = false;
-        prAttemptFailed.value = createPR.value;
-        validationErrors.value = [result.error || '保存失败'];
-      }
-    } else {
-      const validation = props.api.validateConfig('vuepress', vuepressContent.value);
-      if (!validation.valid) {
+    const validation = props.api.validateConfig(type, content);
+    if (!validation.valid) {
+      if (isVuepress) {
         vuepressErrors.value = validation.errors;
-        showProgress.value = false;
-        saving.value = false;
-        return;
-      }
-
-      const result = await props.api.updateVuePressFile(selectedVuepressPath.value, vuepressContent.value, {
-        createPR: createPR.value,
-        commitMessage: `更新 .vuepress 配置 via Sillot`,
-        onProgress: (percent: number, msg: string) => {
-          progressPercent.value = percent;
-          progressMessage.value = msg;
-        },
-      });
-
-      showProgress.value = false;
-      if (result.success) {
-        resultSuccess.value = true;
-        prUrl.value = result.prUrl || '';
-        prAttemptFailed.value = false;
-        if (result.prNumber && result.branch && props.prCheckPoller && props.openPRCheckModal) {
-          props.prCheckPoller.startPolling(
-            String(result.prNumber),
-            {
-              prNumber: result.prNumber,
-              branch: result.branch,
-              headSha: result.commitSha ?? '',
-              filePath: '',
-              startedAt: Date.now(),
-            },
-            () => props.gitHubApi!,
-          );
-          props.openPRCheckModal(result.prNumber, result.branch);
-        }
       } else {
-        resultSuccess.value = false;
-        prAttemptFailed.value = createPR.value;
-        vuepressErrors.value = [result.error || '保存失败'];
+        validationErrors.value = validation.errors;
       }
+      return;
     }
-    showResult.value = true;
+
+    const updateFn = isVuepress
+      ? () => props.api.updateVuePressFile(selectedVuepressPath.value, content, {
+          createPR: createPR.value,
+          commitMessage: `更新 .vuepress 配置 via Sillot`,
+          onProgress: (percent: number, msg: string) => {
+            progressPercent.value = percent;
+            progressMessage.value = msg;
+          },
+        })
+      : () => props.api.updateConfig(type, content, {
+          createPR: createPR.value,
+          commitMessage: `更新配置文件 via Sillot`,
+          onProgress: (percent: number, msg: string) => {
+            progressPercent.value = percent;
+            progressMessage.value = msg;
+          },
+        });
+
+    const result = await updateFn();
+    handleSaveResult(result, isVuepress);
   } catch (error: any) {
-    showProgress.value = false;
-    resultSuccess.value = false;
-    showResult.value = true;
+    handleSaveResult({ success: false, error: error.message }, activeTab.value !== 'config');
   } finally {
     saving.value = false;
   }
@@ -550,16 +346,144 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (themeObserver) {
-    themeObserver.disconnect();
-    themeObserver = null;
-  }
-  if (viewportObserver) {
-    viewportObserver.disconnect();
-    viewportObserver = null;
-  }
+  themeObserver?.disconnect();
+  viewportObserver?.disconnect();
 });
 </script>
+
+<template>
+  <div class="mobile-config-editor-wrapper" :class="{ 'is-dark': isDark }">
+    <div class="editor-overlay" @click.self="handleClose">
+      <div class="editor-panel">
+        <div class="panel-header">
+          <span class="panel-title">{{ modalTitle }}</span>
+          <t-button variant="text" size="small" class="close-btn" @click="handleClose">
+            <CloseIcon />
+          </t-button>
+        </div>
+
+        <t-tabs v-model="activeTab" :line-width="30" class="editor-tabs">
+          <t-tab-panel value="config" label="配置文件">
+            <div class="tab-content">
+              <div class="picker-trigger" @click="showConfigPicker = true">
+                <span class="picker-value">{{ getConfigTitle(selectedConfigType) }}</span>
+                <span class="picker-arrow">▼</span>
+              </div>
+
+              <div class="file-path">文件路径: {{ currentConfigPath }}</div>
+
+              <t-textarea
+                v-model="configContent"
+                placeholder="配置内容"
+                :autosize="{ minRows: 6, maxRows: 13 }"
+                :disabled="loading"
+                class="config-textarea"
+              />
+
+              <t-loading v-if="loading" size="small" class="loading-indicator" />
+
+              <div v-if="validationErrors.length > 0" class="error-list">
+                <div v-for="(err, idx) in validationErrors" :key="idx" class="error-item">{{ err }}</div>
+              </div>
+            </div>
+          </t-tab-panel>
+
+          <t-tab-panel value="vuepress" label=".vuepress">
+            <div class="tab-content">
+              <div class="picker-trigger" @click="openVuepressPicker">
+                <span class="picker-value">{{ getVuepressFileName(selectedVuepressPath) || '选择文件' }}</span>
+                <span class="picker-arrow">▼</span>
+              </div>
+
+              <div class="file-path">文件路径: {{ selectedVuepressPath }}</div>
+
+              <t-textarea
+                v-model="vuepressContent"
+                placeholder=".vuepress 配置内容"
+                :autosize="{ minRows: 6, maxRows: 20 }"
+                :disabled="loadingVuepress"
+                class="config-textarea"
+              />
+
+              <t-loading v-if="loadingVuepress" size="small" class="loading-indicator" />
+
+              <div v-if="vuepressErrors.length > 0" class="error-list">
+                <div v-for="(err, idx) in vuepressErrors" :key="idx" class="error-item">{{ err }}</div>
+              </div>
+            </div>
+          </t-tab-panel>
+        </t-tabs>
+
+        <div class="panel-footer">
+          <t-checkbox v-model="createPR" class="pr-checkbox">
+            创建 Pull Request
+          </t-checkbox>
+          <div class="footer-actions">
+            <t-button variant="outline" class="action-btn" @click="handleClose">
+              取消
+            </t-button>
+            <t-button
+              :disabled="!canSave || saving"
+              :loading="saving"
+              class="action-btn save-btn"
+              @click="handleSave"
+            >
+              保存
+            </t-button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 选择器弹窗 -->
+    <t-popup v-if="showConfigPicker" v-model:visible="showConfigPicker" placement="bottom" close-on-overlay-click>
+      <t-picker
+        v-if="configPickerColumns.length > 0"
+        :columns="configPickerColumns"
+        @confirm="onConfigPickerConfirm"
+        @cancel="showConfigPicker = false"
+      />
+    </t-popup>
+
+    <t-popup v-if="showVuepressPicker" v-model:visible="showVuepressPicker" placement="bottom" close-on-overlay-click>
+      <t-picker
+        v-if="vuepressPickerColumns.length > 0"
+        :columns="vuepressPickerColumns"
+        @confirm="onVuepressPickerConfirm"
+        @cancel="showVuepressPicker = false"
+      />
+      <div v-else class="empty-picker">
+        <t-empty description="暂无可选配置文件" />
+      </div>
+    </t-popup>
+
+    <!-- 进度弹窗 -->
+    <t-popup v-model:visible="showProgress" placement="center" close-on-click-overlay>
+      <div class="progress-popup">
+        <h4 class="progress-title">保存中...</h4>
+        <t-progress :percentage="progressPercent" class="progress-bar" />
+        <t-text class="progress-message">{{ progressMessage }}</t-text>
+      </div>
+    </t-popup>
+
+    <!-- 结果弹窗 -->
+    <t-popup v-model:visible="showResult" placement="center" close-on-click-overlay>
+      <div class="result-popup">
+        <t-result
+          :theme="resultSuccess ? 'success' : 'error'"
+          :title="resultSuccess ? (createPR ? 'PR 创建成功' : '保存成功') : '保存失败'"
+        >
+          <template #extra>
+            <t-button v-if="resultSuccess && prUrl" tag="a" :href="prUrl" target="_blank" variant="primary" size="small">
+              查看 PR
+            </t-button>
+            <t-button size="small" @click="showResult = false">关闭</t-button>
+          </template>
+        </t-result>
+      </div>
+    </t-popup>
+  </div>
+</template>
 
 <style>
 .mobile-config-editor-wrapper {
@@ -569,6 +493,13 @@ onUnmounted(() => {
   --text-primary: #333333;
   --text-placeholder: #999999;
   --keyboard-offset: 0px;
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
   padding-bottom: var(--keyboard-offset);
 }
 
@@ -578,5 +509,162 @@ onUnmounted(() => {
   --border-color: #3a3a3a;
   --text-primary: #cdd6f4;
   --text-placeholder: #6c7086;
+}
+
+.editor-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+}
+
+.editor-panel {
+  position: relative;
+  width: 100%;
+  background: var(--panel-bg);
+  border-radius: 16px 16px 0 0;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.panel-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.close-btn {
+  padding: 4px;
+}
+
+.editor-tabs {
+  --td-tab-nav-bg-color: transparent;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.picker-trigger {
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.picker-value {
+  color: var(--text-primary);
+}
+
+.picker-arrow {
+  color: var(--text-placeholder);
+}
+
+.file-path {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-placeholder);
+}
+
+.config-textarea {
+  font-family: Monaco, Menlo, monospace;
+  font-size: 13px;
+}
+
+.loading-indicator {
+  text-align: center;
+  padding: 12px;
+}
+
+.error-list {
+  margin-top: 12px;
+  color: #e34a4a;
+  font-size: 12px;
+}
+
+.error-item {
+  margin: 4px 0;
+}
+
+.panel-footer {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  gap: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.pr-checkbox {
+  display: flex;
+  align-items: center;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.action-btn {
+  flex: 1;
+}
+
+.save-btn {
+  background: #1966ff;
+  border-color: #1966ff;
+  color: #fff;
+}
+
+.empty-picker {
+  padding: 24px;
+  text-align: center;
+  background: var(--panel-bg);
+}
+
+.progress-popup,
+.result-popup {
+  width: 80vw;
+  max-width: 300px;
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.progress-title {
+  margin: 0 0 16px;
+  color: var(--text-primary);
+}
+
+.progress-bar {
+  margin-bottom: 12px;
+}
+
+.progress-message {
+  font-size: 12px;
+  color: var(--text-placeholder);
 }
 </style>
