@@ -2,6 +2,7 @@ import type VuePressPublisherPlugin from '../../main';
 import { BaseSyntaxHandler } from './SyntaxHandler';
 import { QRCodeHandler } from './QRCodeHandler';
 import { AbbreviationHandler } from './AbbreviationHandler';
+import { AnnotationHandler } from './AnnotationHandler';
 
 interface InlineMatch {
 	type: 'abbr' | 'annotation' | 'icon' | 'plot' | 'pdf';
@@ -13,6 +14,7 @@ interface InlineMatch {
 export class InlineSyntaxHandler extends BaseSyntaxHandler {
 	private qrcodeHandler: QRCodeHandler;
 	private abbreviationHandler: AbbreviationHandler;
+	private annotationHandler: AnnotationHandler;
 
 	private static readonly ABBR_REGEX = /\[([^\]]+)\]\(abbr\s+"([^"]+)"\)/g;
 	private static readonly ANNOTATION_REGEX = /<sup>\[\^(\w+)\]<\/sup>/g;
@@ -24,12 +26,13 @@ export class InlineSyntaxHandler extends BaseSyntaxHandler {
 		super(plugin);
 		this.qrcodeHandler = new QRCodeHandler(plugin);
 		this.abbreviationHandler = new AbbreviationHandler(plugin);
+		this.annotationHandler = new AnnotationHandler(plugin);
 	}
 
 	async processInlineComponents(el: HTMLElement): Promise<void> {
 		await this.abbreviationHandler.processInlineComponents(el);
+		await this.annotationHandler.processInlineComponents(el);
 		this.processAbbreviations(el);
-		this.processAnnotations(el);
 		this.processIcons(el);
 		this.processPlots(el);
 		this.processPdfs(el);
@@ -40,12 +43,20 @@ export class InlineSyntaxHandler extends BaseSyntaxHandler {
 		let processed = text;
 
 		processed = this.abbreviationHandler.preprocessMarkdown(processed);
+		processed = this.annotationHandler.preprocessMarkdown(processed);
 		processed = this.qrcodeHandler.preprocessMarkdown(processed);
 		processed = this.preprocessAbbr(processed);
-		processed = this.preprocessAnnotation(processed);
 		processed = this.preprocessIcon(processed);
 
 		return processed;
+	}
+
+	preScanAnnotationDefinitions(text: string, filePath: string): void {
+		AnnotationHandler.preScanDefinitions(text, filePath);
+	}
+
+	isAnnotationFileScanned(path: string): boolean {
+		return AnnotationHandler.isFileScanned(path);
 	}
 
 	/**

@@ -190,8 +190,11 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 			if (gen !== this.renderGen) return;
 		}
 
-		this._components = await this.extractComponents(this.currentFile);
+		if (this.currentFile) {
+			this._components = await this.extractComponents(this.currentFile);
+		}
 
+		if (!this.panelEl) return;
 		this.panelEl.className = `${PANEL_CONTAINER_CLASS} sillot-doc-sync-panel--${this.state}`;
 
 		if (this.vueApp) {

@@ -2996,4 +2996,144 @@
 	color: var(--interactive-accent-hover, var(--text-normal));
 }
 
+/* Annotation - 内容注释 */
+.sillot-annotation {
+	display: inline;
+	position: relative;
+}
+
+.sillot-annotation--interactive .sillot-annotation__trigger {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 6px;
+	margin: 0 2px;
+	font-size: 0.9em;
+	color: var(--interactive-accent);
+	background: rgba(var(--interactive-accent-rgb), 0.1);
+	border: 1px solid transparent;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	user-select: none;
+	vertical-align: middle;
+}
+
+.sillot-annotation--interactive .sillot-annotation__trigger:hover {
+	background: rgba(var(--interactive-accent-rgb), 0.15);
+	border-color: var(--interactive-accent);
+	transform: translateY(-1px);
+}
+
+.sillot-annotation--interactive .sillot-annotation__popup {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 50%;
+	transform: translateX(-50%) translateY(10px);
+	min-width: 280px;
+	max-width: 400px;
+	padding: 12px 16px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--text-normal);
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	z-index: 1000;
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sillot-annotation--interactive .sillot-annotation__popup::before {
+	content: '';
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	border: 6px solid transparent;
+	border-top-color: var(--background-modifier-border);
+}
+
+.sillot-annotation--interactive .sillot-annotation__popup::after {
+	content: '';
+	position: absolute;
+	top: calc(100% - 1px);
+	left: 50%;
+	transform: translateX(-50%);
+	border: 5px solid transparent;
+	border-top-color: var(--background-primary);
+}
+
+.sillot-annotation--open > .sillot-annotation__popup {
+	opacity: 1;
+	visibility: visible;
+	transform: translateX(-50%) translateY(0);
+	pointer-events: auto;
+}
+
+.sillot-annotation--open > .sillot-annotation__trigger {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+/* 底部弹出框变体 */
+.sillot-annotation__popup--bottom::before {
+	top: auto;
+	bottom: 100%;
+	border-top-color: transparent;
+	border-bottom-color: var(--background-modifier-border);
+}
+
+.sillot-annotation__popup--bottom::after {
+	top: auto;
+	bottom: calc(100% - 1px);
+	border-top-color: transparent;
+	border-bottom-color: var(--background-primary);
+}
+
+.sillot-annotation__list {
+	list-style: none;
+	padding: 0;
+	margin: 8px 0 0 0;
+}
+
+.sillot-annotation__list:first-child {
+	margin-top: 0;
+}
+
+.sillot-annotation__item {
+	padding: 8px 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.sillot-annotation__item:last-child {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+.sillot-annotation__item strong {
+	color: var(--text-normal);
+	font-weight: 600;
+}
+
+.sillot-annotation__item a {
+	color: var(--interactive-accent);
+	text-decoration: none;
+}
+
+.sillot-annotation__item a:hover {
+	text-decoration: underline;
+}
+
+.sillot-annotation__item code {
+	padding: 2px 4px;
+	font-size: 0.9em;
+	background: var(--background-secondary);
+	border-radius: 3px;
+	font-family: 'Monaco', 'Menlo', monospace;
+}
+
 /* Image Enhancement - Figure */

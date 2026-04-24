@@ -194,10 +194,11 @@ export class SyntaxRegistry {
 		const hasVideoInline = /@\[(bilibili|acfun|artPlayer)/.test(text);
 		const hasCedossContainer = /^:{3,}\s*cedoss\b/m.test(text);
 		const hasAudioReader = /@\[audioReader/.test(text);
-		const hasQRCode = /@\[qrcode/.test(text);
+		const hasQRCode = this.hasPatternOutsideCode(text, /@\[qrcode/);
 		const hasAbbreviation = /^\*\[[^\]]+\]:\s/m.test(text);
+		const hasAnnotation = this.hasAnnotationOutsideCode(text);
 
-		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader || hasQRCode || hasAbbreviation) {
+		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader || hasQRCode || hasAbbreviation || hasAnnotation) {
 			let preprocessed = this.inlineComponentHandler.preprocessMarkdown!(text);
 			preprocessed = this.inlineComponentHandler.preprocessCedossContainerMarkdown(preprocessed);
 			preprocessed = this.videoHandler.preprocessMarkdown!(preprocessed);
@@ -309,6 +310,17 @@ export class SyntaxRegistry {
 			else break;
 		}
 		return count >= 3 ? count : 0;
+	}
+
+	private hasPatternOutsideCode(text: string, pattern: RegExp): boolean {
+		let cleaned = text;
+		cleaned = cleaned.replace(/```[\s\S]*?```/g, '');
+		cleaned = cleaned.replace(/`[^`]+`/g, '');
+		return pattern.test(cleaned);
+	}
+
+	private hasAnnotationOutsideCode(text: string): boolean {
+		return this.hasPatternOutsideCode(text, /\[\+[^\]]+\]/);
 	}
 
 	private getSectionRawMarkdown(el: HTMLElement, ctx: MarkdownPostProcessorContext): string {

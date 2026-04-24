@@ -20,23 +20,54 @@ export class AbbreviationHandler extends BaseSyntaxHandler {
 	 * 定义语法：*[HTML]: Hyper Text Markup Language
 	 */
 	private collectAndReplaceAbbreviations(text: string): string {
-		const lines = text.split('\n');
+		if (!/^\*\[[^\]]+\]:\s/m.test(text)) {
+			return text;
+		}
+
+		// 先从原始文本收集所有定义（包括代码块内的），因为定义需要跨 section 使用
+		for (const line of text.split('\n')) {
+			const match = line.match(AbbreviationHandler.ABBR_DEF_REGEX);
+			if (match) {
+				this.abbreviationMap.set(match[1].trim(), match[2].trim());
+			}
+		}
+
+		// 代码块保护：只替换代码块外的定义行，代码块内容保持不变
+		const codeBlocks: string[] = [];
+		let protectedText = text;
+
+		protectedText = protectedText.replace(/```[\s\S]*?```/g, (match) => {
+			codeBlocks.push(match);
+			return `\x00CB${codeBlocks.length - 1}\x00`;
+		});
+		protectedText = protectedText.replace(/`[^`]+`/g, (match) => {
+			codeBlocks.push(match);
+			return `\x00CB${codeBlocks.length - 1}\x00`;
+		});
+
+		const lines = protectedText.split('\n');
 		const processedLines: string[] = [];
 
 		for (const line of lines) {
-			const match = line.match(AbbreviationHandler.ABBR_DEF_REGEX);
+			if (/^\x00CB\d+\x00$/.test(line.trim())) {
+				processedLines.push(line);
+				continue;
+			}
 
-			if (match) {
-				const abbr = match[1].trim();
-				const definition = match[2].trim();
-				this.abbreviationMap.set(abbr, definition);
+			if (AbbreviationHandler.ABBR_DEF_REGEX.test(line)) {
 				processedLines.push('');
 			} else {
 				processedLines.push(line);
 			}
 		}
 
-		return processedLines.join('\n');
+		let result = processedLines.join('\n');
+
+		result = result.replace(/\x00CB(\d+)\x00/g, (_match, indexStr) => {
+			return codeBlocks[parseInt(indexStr)];
+		});
+
+		return result;
 	}
 
 	/**

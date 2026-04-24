@@ -111,13 +111,32 @@ export class QRCodeHandler extends BaseSyntaxHandler {
 	}
 
 	private preprocessInlineQRCodes(text: string): string {
-		return text.replace(
+		if (!QRCodeHandler.INLINE_REGEX.test(text)) return text;
+		QRCodeHandler.INLINE_REGEX.lastIndex = 0;
+
+		const codeBlocks: string[] = [];
+		let protectedText = text;
+
+		protectedText = protectedText.replace(/```[\s\S]*?```/g, (match) => {
+			codeBlocks.push(match);
+			return `\x00CB${codeBlocks.length - 1}\x00`;
+		});
+		protectedText = protectedText.replace(/`[^`]+`/g, (match) => {
+			codeBlocks.push(match);
+			return `\x00CB${codeBlocks.length - 1}\x00`;
+		});
+
+		protectedText = protectedText.replace(
 			QRCodeHandler.INLINE_REGEX,
 			(_match: string, attrsStr: string, qrText: string) => {
 				const options = this.parseAttributes(attrsStr);
 				return `<span class="sillot-qrcode-inline" data-text="${this.escapeAttr(qrText)}" data-options='${JSON.stringify(options)}' data-processed="false"></span>`;
 			}
 		);
+
+		return protectedText.replace(/\x00CB(\d+)\x00/g, (_match, indexStr) => {
+			return codeBlocks[parseInt(indexStr)];
+		});
 	}
 
 	async buildQRCodeContainer(

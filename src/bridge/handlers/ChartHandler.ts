@@ -38,12 +38,10 @@ export class ChartHandler extends BaseSyntaxHandler {
 	private static extLibs: ExtLibraries | null = null;
 
 	processInlineComponents(el: HTMLElement): void {
-		console.log('[Sillot:Chart] processInlineComponents 触发, el=', el.className);
 		this.processChartContainers(el);
 	}
 
 	createChartContainer(chartType: string, contentText: string): HTMLElement {
-		console.log('[Sillot:Chart] createChartContainer 被调用, type=', chartType, 'contentLen=', contentText.length);
 		const container = document.createElement('div');
 		container.className = 'sillot-chart-container';
 		container.setAttribute('data-chart-type', chartType);
@@ -73,7 +71,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 
 		this.bindChartActions(container, contentText);
 		this.renderChart(container, { type: chartType as ChartConfig['type'], rawContent: contentText }).catch(err => {
-			console.error('[Sillot] 图表渲染失败:', err);
+			this.plugin.logger?.warn('Chart', '图表渲染失败:', err);
 		});
 
 		return container;
@@ -92,7 +90,6 @@ export class ChartHandler extends BaseSyntaxHandler {
 	}
 
 	async renderChart(container: HTMLElement, config: ChartConfig): Promise<void> {
-		console.log('[Sillot:Chart] renderChart 开始, type=', config.type);
 		const chartId = `${ChartHandler.CHART_CONTAINER_PREFIX}${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 		container.id = chartId;
 		this.showLoadingState(container, config.type);
@@ -126,25 +123,19 @@ export class ChartHandler extends BaseSyntaxHandler {
 	 * 返回库对象，若加载失败返回 null
 	 */
 	private async ensureExtLoaded(): Promise<ExtLibraries | null> {
-		console.log('[Sillot:Chart] ensureExtLoaded 被调用');
-		console.log('[Sillot:Chart] extLibs缓存=', !!ChartHandler.extLibs, 'extLoadPromise=', !!ChartHandler.extLoadPromise);
-		console.log('[Sillot:Chart] settings.extPath=', JSON.stringify(this.plugin.settings?.extPath));
-
 		if (ChartHandler.extLibs) {
 			const valid = this.validateExtLibs(ChartHandler.extLibs);
-			console.log('[Sillot:Chart] → 使用缓存的 extLibs, valid=', valid);
 			if (valid) return ChartHandler.extLibs;
-			console.warn('[Sillot:Chart] 缓存的 extLibs 无效，清除并重新加载');
+			this.plugin.logger?.warn('Chart', '缓存的 extLibs 无效，重新加载');
 			ChartHandler.extLibs = null;
 		}
 		if (ChartHandler.extLoadPromise) {
-			console.log('[Sillot:Chart] → 复用进行中的加载 Promise');
 			return ChartHandler.extLoadPromise;
 		}
 
 		const extPath = this.plugin.settings?.extPath;
 		if (!extPath) {
-			console.warn('[Sillot] extPath 未配置，图表功能不可用。请在设置中配置「高级依赖侧载」路径，或运行 bun run build:ext 构建');
+			this.plugin.logger?.warn('Chart', 'extPath 未配置，图表功能不可用');
 			return null;
 		}
 
@@ -152,35 +143,29 @@ export class ChartHandler extends BaseSyntaxHandler {
 			try {
 				if (window.SillotExt) {
 					const valid = this.validateExtLibs(window.SillotExt as any);
-					console.log('[Sillot:Chart] window.SillotExt 已存在, valid=', valid, 'keys=', Object.keys(window.SillotExt));
 					if (valid) {
 						ChartHandler.extLibs = window.SillotExt as ExtLibraries;
 						return ChartHandler.extLibs;
 					}
-					console.warn('[Sillot:Chart] window.SillotExt 存在但内容不完整，将重新注入');
 				}
 
 				const relativePath = this.normalizeExtPath(extPath);
-				console.log('[Sillot:Chart] 正在加载侧载包:', relativePath);
-
 				await this.loadScriptInline(relativePath);
 
 				if (!window.SillotExt) {
-					throw new Error('侧载包执行完成但未导出 window.SillotExt，请检查 sillot_pro_ext.js 是否为最新构建产物');
+					throw new Error('侧载包执行完成但未导出 window.SillotExt');
 				}
 
 				const finalValid = this.validateExtLibs(window.SillotExt as any);
-				console.log('[Sillot:Chart] 加载后验证 window.SillotExt, keys=', Object.keys(window.SillotExt), 'valid=', finalValid);
-
 				if (!finalValid) {
-					throw new Error('侧载包已加载但缺少必要导出项。期望: echarts, ChartJS 等。实际: ' + Object.keys(window.SillotExt).join(','));
+					throw new Error('侧载包已加载但缺少必要导出项');
 				}
 
 				ChartHandler.extLibs = window.SillotExt as ExtLibraries;
-				console.log('[Sillot:Chart] ✅ 高级依赖加载成功:', Object.keys(ChartHandler.extLibs));
+				this.plugin.logger?.debug('Chart', '高级依赖加载成功');
 				return ChartHandler.extLibs;
 			} catch (err) {
-				console.error('[Sillot:Chart] ❌ 高级依赖加载失败:', err);
+				this.plugin.logger?.warn('Chart', '高级依赖加载失败:', err);
 				return null;
 			} finally {
 				ChartHandler.extLoadPromise = null;
@@ -194,10 +179,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 		if (!libs || typeof libs !== 'object') return false;
 		const required = ['echarts', 'ChartJS'];
 		for (const key of required) {
-			if (!libs[key]) {
-				console.warn(`[Sillot:Chart] validateExtLibs: 缺少 ${key}`);
-				return false;
-			}
+			if (!libs[key]) return false;
 		}
 		return true;
 	}
@@ -211,26 +193,21 @@ export class ChartHandler extends BaseSyntaxHandler {
 	}
 
 	private async loadScriptInline(relativePath: string): Promise<void> {
-		console.log('[Sillot:Chart] loadScriptInline 开始, path=', relativePath);
-
 		let content: string;
 		try {
 			content = await this.readExtFile(relativePath);
-			console.log('[Sillot:Chart] 文件读取成功, size=', (content.length / 1024).toFixed(1), 'KB');
 		} catch (readErr) {
-			console.error('[Sillot:Chart] ❌ readExtFile 失败:', readErr);
 			throw new Error(`读取侧载包失败 (${relativePath}): ${(readErr as Error).message}`);
 		}
 
 		if (!content || content.length < 100) {
-			throw new Error(`侧载包文件过小或为空 (${content?.length ?? 0} bytes)，请确认已运行 bun run build:ext`);
+			throw new Error(`侧载包文件过小或为空 (${content?.length ?? 0} bytes)`);
 		}
 
 		const scriptId = 'sillot-ext-script';
 		const existing = document.getElementById(scriptId);
 		if (existing) {
 			existing.remove();
-			console.log('[Sillot:Chart] 移除旧脚本，重新注入');
 		}
 
 		return new Promise<void>((resolve, reject) => {
@@ -238,13 +215,9 @@ export class ChartHandler extends BaseSyntaxHandler {
 				const script = document.createElement('script');
 				script.id = scriptId;
 				script.textContent = content;
-
 				document.head.appendChild(script);
-				console.log('[Sillot:Chart] <script> 已注入 DOM, length=', content.length);
 
 				setTimeout(() => {
-					const keys = window.SillotExt ? Object.keys(window.SillotExt) : [];
-					console.log('[Sillot:Chart] <script> 注入后检查 window.SillotExt=', !!window.SillotExt, 'keys=', keys);
 					resolve();
 				}, 300);
 			} catch (err) {
@@ -254,23 +227,17 @@ export class ChartHandler extends BaseSyntaxHandler {
 	}
 
 	private async readExtFile(extPath: string): Promise<string> {
-		console.log('[Sillot:Chart] readExtFile 输入路径:', extPath);
-
 		const isAbsolutePath = /^[A-Za-z]:\\|^\//.test(extPath);
-
 		if (isAbsolutePath) {
 			return this.readViaNodeFs(extPath);
 		}
-
 		return this.readViaAdapter(extPath);
 	}
 
 	private readViaNodeFs(absolutePath: string): string {
 		try {
 			const fs = require('fs') as { readFileSync: (p: string, e?: string) => Buffer };
-			const buf = fs.readFileSync(absolutePath, 'utf-8');
-			console.log('[Sillot:Chart] readViaNodeFs 成功, path=', absolutePath);
-			return buf.toString();
+			return fs.readFileSync(absolutePath, 'utf-8').toString();
 		} catch (err: any) {
 			if (err.code === 'ENOENT') {
 				throw new Error(`文件不存在: ${absolutePath}`);
@@ -282,11 +249,9 @@ export class ChartHandler extends BaseSyntaxHandler {
 	private async readViaAdapter(relativePath: string): Promise<string> {
 		const adapter = this.plugin.app.vault.adapter;
 		try {
-			const content = await adapter.read(relativePath);
-			console.log('[Sillot:Chart] readViaAdapter 成功, path=', relativePath, 'size=', (content.length / 1024).toFixed(1), 'KB');
-			return content;
+			return await adapter.read(relativePath);
 		} catch (err: any) {
-			throw new Error(`Vault 内读取失败 (${relativePath}): ${err.message}\n提示：相对路径相对于 Vault 根目录，请确认文件已在 Vault 中`);
+			throw new Error(`Vault 内读取失败 (${relativePath}): ${err.message}`);
 		}
 	}
 
@@ -398,7 +363,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 				},
 			});
 		} catch (error) {
-			console.error('[Sillot] Flowchart 渲染失败:', error);
+			this.plugin.logger?.warn('Chart', 'Flowchart 渲染失败:', error);
 			throw error;
 		}
 	}
@@ -445,7 +410,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 			(container as any)._chartInstance = mm;
 			(container as any)._svgContainer = svgDiv;
 		} catch (error) {
-			console.error('[Sillot] Markmap 渲染失败:', error);
+			this.plugin.logger?.warn('Chart', 'Markmap 渲染失败:', error);
 			throw error;
 		}
 	}
