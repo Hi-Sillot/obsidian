@@ -2895,4 +2895,90 @@
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 24 24'%3E%3Cpath fill='%238e5cd9' d='M5 19q-.425 0-.712-.288T4 18t.288-.712T5 17h1v-7q0-2.075 1.25-3.687T10.5 4.2v-.7q0-.625.438-1.062T12 2t1.063.438T13.5 3.5v.7q2 .5 3.25 2.113T18 10v7h1q.425 0 .713.288T20 18t-.288.713T19 19zm7 3q-.825 0-1.412-.587T10 20h4q0 .825-.587 1.413T12 22m0-9q.425 0 .713-.288T13 12V9q0-.425-.288-.712T12 8t-.712.288T11 9v3q0 .425.288.713T12 13m0 3q.425 0 .713-.288T13 15t-.288-.712T12 14t-.712.288T11 15t.288.713T12 16'/%3E%3C/svg%3E");
 }
 
+/* QRCode Styles */
+.sillot-qrcode-container {
+	margin: 16px 0;
+}
+
+.sillot-qrcode-wrapper {
+	display: inline-block;
+	text-align: left;
+}
+
+.sillot-qrcode-align-left {
+	text-align: left;
+}
+
+.sillot-qrcode-align-center {
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.sillot-qrcode-align-right {
+	text-align: right;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+}
+
+.sillot-qrcode-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 16px;
+	background: var(--background-secondary);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	max-width: fit-content;
+}
+
+.sillot-qrcode-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-normal);
+	margin-bottom: 12px;
+	text-align: center;
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.sillot-qrcode-content {
+	display: inline-block;
+}
+
+.sillot-qrcode-image {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border-radius: 4px;
+}
+
+.sillot-qrcode-content svg {
+	display: block;
+	max-width: 100%;
+	height: auto;
+}
+
+.sillot-qrcode-caption {
+	font-size: 12px;
+	color: var(--text-muted);
+	margin-top: 8px;
+	text-align: center;
+	font-style: italic;
+}
+
+.sillot-qrcode-inline {
+	display: inline-block;
+	vertical-align: middle;
+}
+
+.sillot-qrcode-error {
+	color: var(--text-error);
+	font-size: 13px;
+	padding: 8px;
+	background: rgba(var(--text-error-rgb), 0.1);
+	border-radius: 4px;
+	border: 1px solid rgba(var(--text-error-rgb), 0.2);
+}
+
 /* Image Enhancement - Figure */

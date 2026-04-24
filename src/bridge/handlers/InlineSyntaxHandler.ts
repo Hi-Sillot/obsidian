@@ -1,5 +1,6 @@
 import type VuePressPublisherPlugin from '../../main';
 import { BaseSyntaxHandler } from './SyntaxHandler';
+import { QRCodeHandler } from './QRCodeHandler';
 
 interface InlineMatch {
 	type: 'abbr' | 'annotation' | 'icon' | 'plot' | 'pdf';
@@ -9,23 +10,32 @@ interface InlineMatch {
 }
 
 export class InlineSyntaxHandler extends BaseSyntaxHandler {
+	private qrcodeHandler: QRCodeHandler;
+
 	private static readonly ABBR_REGEX = /\[([^\]]+)\]\(abbr\s+"([^"]+)"\)/g;
 	private static readonly ANNOTATION_REGEX = /<sup>\[\^(\w+)\]<\/sup>/g;
 	private static readonly ICON_REGEX = /:([\w-]+(?:-[\w-]+)*):/g;
 	private static readonly PLOT_REGEX = /```plot\n([\s\S]*?)\n```/g;
 	private static readonly PDF_REGEX = /<Pdf\s+(?:src|url)="([^"]+)"\s*(?:width="([^"]*)")?\s*(?:height="([^"]*)")?\s*\/?>/gi;
 
-	processInlineComponents(el: HTMLElement): void {
+	constructor(plugin: VuePressPublisherPlugin) {
+		super(plugin);
+		this.qrcodeHandler = new QRCodeHandler(plugin);
+	}
+
+	async processInlineComponents(el: HTMLElement): Promise<void> {
 		this.processAbbreviations(el);
 		this.processAnnotations(el);
 		this.processIcons(el);
 		this.processPlots(el);
 		this.processPdfs(el);
+		await this.qrcodeHandler.processInlineComponents(el);
 	}
 
 	preprocessMarkdown(text: string): string {
 		let processed = text;
 
+		processed = this.qrcodeHandler.preprocessMarkdown(processed);
 		processed = this.preprocessAbbr(processed);
 		processed = this.preprocessAnnotation(processed);
 		processed = this.preprocessIcon(processed);

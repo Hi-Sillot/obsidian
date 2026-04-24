@@ -194,33 +194,35 @@ export class SyntaxRegistry {
 		const hasVideoInline = /@\[(bilibili|acfun|artPlayer)/.test(text);
 		const hasCedossContainer = /^:{3,}\s*cedoss\b/m.test(text);
 		const hasAudioReader = /@\[audioReader/.test(text);
+		const hasQRCode = /@\[qrcode/.test(text);
 
-		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader) {
+		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader || hasQRCode) {
 			let preprocessed = this.inlineComponentHandler.preprocessMarkdown!(text);
 			preprocessed = this.inlineComponentHandler.preprocessCedossContainerMarkdown(preprocessed);
 			preprocessed = this.videoHandler.preprocessMarkdown!(preprocessed);
 			preprocessed = this.audioReaderHandler.preprocessMarkdown!(preprocessed);
+			preprocessed = this.inlineSyntaxHandler.preprocessMarkdown!(preprocessed);
 			el.empty();
 			el.style.visibility = 'hidden';
 			await MarkdownRenderer.render(
 				this.plugin.app, preprocessed, el, ctx.sourcePath, this.plugin
 			);
 			el.style.visibility = '';
-			this.processInlineComponents(el);
+			await this.processInlineComponents(el);
 			return;
 		}
 
-		this.processInlineComponents(el);
+		await this.processInlineComponents(el);
 	}
 
-	private processInlineComponents(el: HTMLElement) {
+	private async processInlineComponents(el: HTMLElement): Promise<void> {
 		this.inlineComponentHandler.processInlineComponents!(el);
 		this.videoHandler.processInlineComponents!(el);
 		this.imageEnhanceHandler.processInlineComponents!(el);
 		this.codeBlockEnhanceHandler.processInlineComponents!(el);
 		this.chartHandler.processInlineComponents!(el);
 		this.specialContainerHandler.processInlineComponents!(el);
-		this.inlineSyntaxHandler.processInlineComponents!(el);
+		await this.inlineSyntaxHandler.processInlineComponents!(el);
 		this.experienceEnhanceHandler.processInlineComponents!(el);
 		this.ttsHandler.processInlineComponents!(el);
 		this.audioReaderHandler.processInlineComponents!(el);

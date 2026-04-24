@@ -2,6 +2,7 @@ import { MarkdownRenderer } from 'obsidian';
 import type { MarkdownPostProcessorContext } from 'obsidian';
 import type VuePressPublisherPlugin from '../../main';
 import { BaseSyntaxHandler } from './SyntaxHandler';
+import { QRCodeHandler } from './QRCodeHandler';
 
 const CONTAINER_TYPES = new Set([
 	'info', 'tip', 'warning', 'danger', 'note', 'important', 'caution',
@@ -34,12 +35,21 @@ const CONTAINER_TITLES: Record<string, string> = {
 };
 
 export class ContainerHandler extends BaseSyntaxHandler {
+	private qrcodeHandler: QRCodeHandler;
+
 	static readonly CONTAINER_TYPES = CONTAINER_TYPES;
 	static readonly DETAILS_TYPES = DETAILS_TYPES;
 	static readonly SPECIAL_CONTAINER_TYPES = SPECIAL_CONTAINER_TYPES;
 
+	constructor(plugin: VuePressPublisherPlugin) {
+		super(plugin);
+		this.qrcodeHandler = new QRCodeHandler(plugin);
+	}
+
 	async buildContainer(containerType: string, title: string, contentText: string, ctx: MarkdownPostProcessorContext): Promise<HTMLElement | null> {
-		if (DETAILS_TYPES.has(containerType)) {
+		if (containerType === 'qrcode') {
+			return this.buildQRCodeContainer(contentText, title, ctx);
+		} else if (DETAILS_TYPES.has(containerType)) {
 			return this.createDetailsContainerFromText(contentText, title, containerType, ctx);
 		} else if (CONTAINER_TYPES.has(containerType)) {
 			return this.createHintContainerFromText(contentText, containerType, title, ctx);
@@ -143,6 +153,27 @@ export class ContainerHandler extends BaseSyntaxHandler {
 		}
 
 		return container;
+	}
+
+	/**
+	 * 构建二维码容器
+	 * 语法：::: qrcode card svg title="xxx" align="center" \n text \n :::
+	 */
+	private async buildQRCodeContainer(
+		contentText: string,
+		title: string,
+		ctx: MarkdownPostProcessorContext
+	): Promise<HTMLElement> {
+		const container = document.createElement('div');
+		container.className = 'sillot-qrcode-container';
+
+		const options: Record<string, string> = {};
+
+		if (title) {
+			options.title = title;
+		}
+
+		return this.qrcodeHandler.buildQRCodeContainer(contentText, title || '', options);
 	}
 
 	private async renderContentToElement(
