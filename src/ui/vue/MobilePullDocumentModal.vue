@@ -2,6 +2,7 @@
 import { ref, onMounted, watch, nextTick, onUnmounted } from 'vue';
 import { Notice, MarkdownRenderer, Component } from 'obsidian';
 import { CloseIcon } from 'tdesign-icons-vue-next';
+import { useThemeSync } from './composables/useThemeSync';
 import type { DocumentTreeService } from '../../sync/DocumentTreeService';
 import type { DocTreeNode, PullSource, LocalExistenceResult } from '../../types';
 import type { PermalinkIndexEntry } from '../../bridge/types';
@@ -20,9 +21,8 @@ interface Props {
 
 const props = defineProps<Props>();
 
-// 主题状态
-const isDark = ref(false);
-let themeObserver: MutationObserver | null = null;
+// 使用统一的主题同步系统
+const { isDark } = useThemeSync();
 
 // 标签页状态
 const activeTab = ref('select');
@@ -37,6 +37,7 @@ const loadedPaths = ref<Set<string>>(new Set());
 const selectedPath = ref<string | null>(null);
 const selectedSource = ref<PullSource | null>(null);
 const previewContent = ref<string | null>(null);
+const previewError = ref<string | null>(null); // 预览错误信息
 const localExistence = ref<LocalExistenceResult | null>(null);
 const localSavePath = ref('');
 const isLoadingPreview = ref(false);
@@ -54,60 +55,6 @@ const pattern = ref('');
 const renderComponent = new Component();
 renderComponent.load();
 let lastRenderedKey = '';
-
-// 主题管理
-const detectTheme = () => {
-  isDark.value = document.body.classList.contains('theme-dark');
-};
-
-const applyThemeVariables = (dark: boolean) => {
-  const wrapper = document.querySelector('.mobile-pull-doc-wrapper') as HTMLElement;
-  if (!wrapper) return;
-
-  const themeVars = dark ? {
-    '--td-brand-color': '#1966ff',
-    '--td-brand-color-light': '#1e3a5f',
-    '--td-bg-color-container': '#1a1a1a',
-    '--td-bg-color-container-hover': '#2d2d2d',
-    '--td-border-level-1-color': '#3a3a3a',
-    '--td-text-color-primary': '#cdd6f4',
-    '--td-text-color-secondary': '#6c7086',
-    '--td-text-color-placeholder': '#6c7086',
-    '--td-text-color-disabled': '#4a4a4a',
-    '--panel-bg': '#1a1a1a',
-    '--bg-secondary': '#2d2d2d',
-    '--border-color': '#3a3a3a',
-    '--text-primary': '#cdd6f4',
-    '--text-placeholder': '#6c7086',
-  } : {
-    '--td-brand-color': '#1966ff',
-    '--td-brand-color-light': '#e6eef8',
-    '--td-bg-color-container': '#ffffff',
-    '--td-bg-color-container-hover': '#f5f5f5',
-    '--td-border-level-1-color': '#e0e0e0',
-    '--td-text-color-primary': '#333333',
-    '--td-text-color-secondary': '#999999',
-    '--td-text-color-placeholder': '#999999',
-    '--td-text-color-disabled': '#cccccc',
-    '--panel-bg': '#ffffff',
-    '--bg-secondary': '#f5f5f5',
-    '--border-color': '#e0e0e0',
-    '--text-primary': '#333333',
-    '--text-placeholder': '#999999',
-  };
-
-  Object.entries(themeVars).forEach(([key, value]) => wrapper.style.setProperty(key, value));
-};
-
-const setupThemeObserver = () => {
-  detectTheme();
-  applyThemeVariables(isDark.value);
-  themeObserver = new MutationObserver(() => {
-    detectTheme();
-    applyThemeVariables(isDark.value);
-  });
-  themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-};
 
 // 数据源
 const defaultSource = (): PullSource => ({
@@ -163,14 +110,18 @@ const loadChildren = async (path: string, parentNode: any) => {
 // 预览加载
 const loadPreview = async (path: string, source: PullSource) => {
   isLoadingPreview.value = true;
+  previewError.value = null; // 清除之前的错误
   try {
     previewContent.value = await props.documentTreeService.previewDocument(path, source);
     localExistence.value = await props.documentTreeService.checkLocalExistence(path);
     if (!localSavePath.value && localExistence.value?.localPath) {
       localSavePath.value = localExistence.value.localPath;
     }
-  } catch {
+  } catch (error) {
     previewContent.value = null;
+    // 设置错误信息供显示
+    previewError.value = error instanceof Error ? error.message : '加载预览失败';
+    console.error('[MobilePullDocModal] 加载预览失败:', error);
   } finally {
     isLoadingPreview.value = false;
   }
@@ -336,17 +287,14 @@ watch([previewContent, isRenderedMode], async ([content, rendered]) => {
 
 watch(isDark, (dark) => {
   document.querySelector('.mobile-pull-doc-wrapper')?.classList.toggle('is-dark', dark);
-  applyThemeVariables(dark);
 });
 
 onMounted(async () => {
-  setupThemeObserver();
   await nextTick();
   await loadDocumentTree();
 });
 
 onUnmounted(() => {
-  themeObserver?.disconnect();
   renderComponent.unload();
 });
 </script>
@@ -477,7 +425,11 @@ onUnmounted(() => {
                       <div v-else ref="renderedEl" class="rendered-preview markdown-rendered"></div>
                     </template>
                     <div v-if="!isLoadingPreview && !previewContent" class="empty-preview">
-                      <t-empty description="无预览内容" />
+                      <div v-if="previewError" class="error-preview">
+                        <t-text class="error-title">⚠️ 加载失败</t-text>
+                        <t-text class="error-message">{{ previewError }}</t-text>
+                      </div>
+                      <t-empty v-else description="无预览内容" />
                     </div>
                   </div>
                 </div>
@@ -700,6 +652,29 @@ onUnmounted(() => {
   text-align: center;
   padding: 48px 24px;
   color: var(--text-placeholder);
+}
+
+.error-preview {
+  padding: 16px;
+  background: rgba(255, 77, 79, 0.1);
+  border-radius: 8px;
+  border-left: 3px solid #ff4d4f;
+}
+
+.error-title {
+  display: block;
+  font-weight: 600;
+  color: #ff4d4f;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.error-message {
+  display: block;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .doc-info {

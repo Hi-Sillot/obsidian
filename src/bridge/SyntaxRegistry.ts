@@ -5,6 +5,14 @@ import { ContainerHandler } from './handlers/ContainerHandler';
 import { TabsHandler } from './handlers/TabsHandler';
 import { InlineComponentHandler } from './handlers/InlineComponentHandler';
 import { VideoHandler } from './handlers/VideoHandler';
+import { ImageEnhanceHandler } from './handlers/ImageEnhanceHandler';
+import { CodeBlockEnhanceHandler } from './handlers/CodeBlockEnhanceHandler';
+import { ChartHandler } from './handlers/ChartHandler';
+import { SpecialContainerHandler } from './handlers/SpecialContainerHandler';
+import { InlineSyntaxHandler } from './handlers/InlineSyntaxHandler';
+import { ExperienceEnhanceHandler } from './handlers/ExperienceEnhanceHandler';
+import { TTSHandler } from './handlers/TTSHandler';
+import { AudioReaderHandler } from './handlers/AudioReaderHandler';
 
 const TAG = 'Syntax';
 
@@ -28,6 +36,14 @@ export class SyntaxRegistry {
 	private tabsHandler: TabsHandler;
 	private inlineComponentHandler: InlineComponentHandler;
 	private videoHandler: VideoHandler;
+	private imageEnhanceHandler: ImageEnhanceHandler;
+	private codeBlockEnhanceHandler: CodeBlockEnhanceHandler;
+	private chartHandler: ChartHandler;
+	private specialContainerHandler: SpecialContainerHandler;
+	private inlineSyntaxHandler: InlineSyntaxHandler;
+	private experienceEnhanceHandler: ExperienceEnhanceHandler;
+	private ttsHandler: TTSHandler;
+	private audioReaderHandler: AudioReaderHandler;
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -35,6 +51,14 @@ export class SyntaxRegistry {
 		this.tabsHandler = new TabsHandler(plugin);
 		this.inlineComponentHandler = new InlineComponentHandler(plugin);
 		this.videoHandler = new VideoHandler(plugin);
+		this.imageEnhanceHandler = new ImageEnhanceHandler(plugin);
+		this.codeBlockEnhanceHandler = new CodeBlockEnhanceHandler(plugin);
+		this.chartHandler = new ChartHandler(plugin);
+		this.specialContainerHandler = new SpecialContainerHandler(plugin);
+		this.inlineSyntaxHandler = new InlineSyntaxHandler(plugin);
+		this.experienceEnhanceHandler = new ExperienceEnhanceHandler(plugin);
+		this.ttsHandler = new TTSHandler(plugin);
+		this.audioReaderHandler = new AudioReaderHandler(plugin);
 	}
 
 	loadInlineComponents(data: InlineComponentData) {
@@ -169,11 +193,13 @@ export class SyntaxRegistry {
 		const hasVideoTabs = /<!--\s*sillot-video-tabs\b/.test(text);
 		const hasVideoInline = /@\[(bilibili|acfun|artPlayer)/.test(text);
 		const hasCedossContainer = /^:{3,}\s*cedoss\b/m.test(text);
+		const hasAudioReader = /@\[audioReader/.test(text);
 
-		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer) {
+		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader) {
 			let preprocessed = this.inlineComponentHandler.preprocessMarkdown!(text);
 			preprocessed = this.inlineComponentHandler.preprocessCedossContainerMarkdown(preprocessed);
 			preprocessed = this.videoHandler.preprocessMarkdown!(preprocessed);
+			preprocessed = this.audioReaderHandler.preprocessMarkdown!(preprocessed);
 			el.empty();
 			el.style.visibility = 'hidden';
 			await MarkdownRenderer.render(
@@ -190,6 +216,14 @@ export class SyntaxRegistry {
 	private processInlineComponents(el: HTMLElement) {
 		this.inlineComponentHandler.processInlineComponents!(el);
 		this.videoHandler.processInlineComponents!(el);
+		this.imageEnhanceHandler.processInlineComponents!(el);
+		this.codeBlockEnhanceHandler.processInlineComponents!(el);
+		this.chartHandler.processInlineComponents!(el);
+		this.specialContainerHandler.processInlineComponents!(el);
+		this.inlineSyntaxHandler.processInlineComponents!(el);
+		this.experienceEnhanceHandler.processInlineComponents!(el);
+		this.ttsHandler.processInlineComponents!(el);
+		this.audioReaderHandler.processInlineComponents!(el);
 	}
 
 	private async finalizeContainer(ctx: MarkdownPostProcessorContext, pending: PendingContainer) {

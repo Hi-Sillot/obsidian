@@ -89,6 +89,39 @@ export class GitHubApi {
 		}
 	}
 
+	async getFileBinary(path: string, branch?: string): Promise<ArrayBuffer | null> {
+		try {
+			const ref = branch || await this.getDefaultBranch();
+			const response = await requestUrl({
+				url: this.ghUrl(`/contents/${path}?ref=${ref}`),
+				headers: {
+					Authorization: `Bearer ${this.token}`,
+					Accept: 'application/vnd.github.v3.raw',
+				},
+			});
+			return response.arrayBuffer;
+		} catch (error) {
+			console.error(`[GitHubApi] Failed to get binary file ${path}:`, error);
+			return null;
+		}
+	}
+
+	async fileExists(path: string, branch?: string): Promise<boolean> {
+		try {
+			const ref = branch || await this.getDefaultBranch();
+			await requestUrl({
+				url: this.ghUrl(`/contents/${path}?ref=${ref}`),
+				headers: {
+					Authorization: `Bearer ${this.token}`,
+					Accept: 'application/vnd.github.v3+json',
+				},
+			});
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	async getDefaultBranch(): Promise<string> {
 		try {
 			const data = await this.request({

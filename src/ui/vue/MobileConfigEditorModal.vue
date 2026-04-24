@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { CloseIcon } from 'tdesign-icons-vue-next';
+import { useThemeSync } from './composables/useThemeSync';
 import type { ConfigEditorAPI } from '../../ui/MobileConfigEditorModal';
 import type { PRCheckPoller } from '../../utils/PRCheckPoller';
 import type { GitHubApi } from '../../sync/githubApi';
@@ -25,9 +26,10 @@ const emit = defineEmits<{
   saved: [];
 }>();
 
-// 主题相关
-const isDark = ref(false);
-let themeObserver: MutationObserver | null = null;
+// 使用统一的主题同步系统
+const { isDark } = useThemeSync();
+
+// 视口观察器（用于键盘弹出时调整布局）
 let viewportObserver: ResizeObserver | null = null;
 
 // 标签页状态
@@ -92,49 +94,6 @@ watch([showResult, resultSuccess], ([show, success]) => {
     setTimeout(() => { showResult.value = false; }, 1500);
   }
 });
-
-// 主题管理
-const detectTheme = () => {
-  isDark.value = document.body.classList.contains('theme-dark');
-};
-
-const applyThemeVariables = (dark: boolean) => {
-  const root = document.documentElement;
-  const theme = dark ? {
-    '--panel-bg': '#1a1a1a',
-    '--bg-secondary': '#2d2d2d',
-    '--border-color': '#3a3a3a',
-    '--text-primary': '#cdd6f4',
-    '--text-placeholder': '#6c7086',
-    '--td-popup-bg-color': '#1a1a1a',
-    '--td-picker-bg-color': '#1a1a1a',
-    '--td-picker-mask-color-bottom': 'rgba(26, 26, 26, 0.4)',
-    '--td-picker-mask-color-top': 'rgba(26, 26, 26, 0.92)',
-  } : {
-    '--panel-bg': '#ffffff',
-    '--bg-secondary': '#f5f5f5',
-    '--border-color': '#e0e0e0',
-    '--text-primary': '#333333',
-    '--text-placeholder': '#999999',
-    '--td-popup-bg-color': '#ffffff',
-    '--td-picker-bg-color': '#ffffff',
-    '--td-picker-mask-color-bottom': 'hsla(0, 0%, 100%, 0.4)',
-    '--td-picker-mask-color-top': 'hsla(0, 0%, 100%, 0.92)',
-  };
-
-  Object.entries(theme).forEach(([key, value]) => root.style.setProperty(key, value));
-  document.documentElement.toggleAttribute('theme-mode', dark);
-};
-
-const setupThemeObserver = () => {
-  detectTheme();
-  applyThemeVariables(isDark.value);
-  themeObserver = new MutationObserver(() => {
-    detectTheme();
-    applyThemeVariables(isDark.value);
-  });
-  themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-};
 
 const setupViewportObserver = () => {
   const editorEl = document.querySelector('.mobile-config-editor-wrapper');
@@ -340,13 +299,11 @@ const handleSave = async () => {
 };
 
 onMounted(() => {
-  setupThemeObserver();
   setupViewportObserver();
   init();
 });
 
 onUnmounted(() => {
-  themeObserver?.disconnect();
   viewportObserver?.disconnect();
 });
 </script>

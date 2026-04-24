@@ -21,6 +21,13 @@ export interface PluginSettings {
 	updateChannel: 'github' | 'github-dev' | 'local';
 	updateRepo: string;
 	lastCheckTime: number | null;
+	watermark?: {
+		enabled: boolean;
+		text?: string;
+		opacity?: number;
+		fontSize?: number;
+		color?: string;
+	};
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -171,7 +178,7 @@ export interface DocTreeNode {
 }
 
 export interface PullSource {
-	type: 'site' | 'github';
+	type: 'site' | 'github' | 'url';
 	baseUrl: string;
 	branch?: string;
 	docsDir?: string;

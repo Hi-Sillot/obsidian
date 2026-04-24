@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useThemeSync } from './composables/useThemeSync';
 import type { UpdateCheckResult, UpdateErrorType } from '../../utils/UpdateChecker';
 
 interface Props {
@@ -18,6 +19,9 @@ const emit = defineEmits<{
 
 const showPopup = defineModel<boolean>('show', { default: false });
 
+// 同步 Obsidian 和 TDesign 的暗黑模式
+const { isDark } = useThemeSync();
+
 const latestVersion = computed(() => props.result?.latestVersion ?? null);
 
 const updateStatus = computed(() => {
@@ -32,7 +36,7 @@ const errorDetail = computed(() => props.result?.errorDetail ?? '');
 
 const getErrorMessage = computed(() => {
   if (!props.result?.error) return '';
-  
+
   const messages: Record<UpdateErrorType, string> = {
     'empty-repo': '配置问题',
     'not-found': '未找到',
@@ -41,7 +45,7 @@ const getErrorMessage = computed(() => {
     'auth-failed': '认证失败',
     'unknown': '检查失败'
   };
-  
+
   return errorType.value ? `${messages[errorType.value]}: ${props.result.error}` : props.result.error;
 });
 
@@ -82,11 +86,10 @@ const openReleasePage = () => emit('open-release');
 
       <!-- 错误信息区域 -->
       <div v-if="result?.error" class="error-alert">
-        <t-alert theme="error" :title="getErrorMessage">
-          <template v-if="errorDetail" #default>
-            <t-text class="error-detail">{{ errorDetail }}</t-text>
-          </template>
-        </t-alert>
+        <div class="error-alert-content">
+          <div class="error-alert-title">{{ getErrorMessage }}</div>
+          <div v-if="errorDetail" class="error-alert-detail">{{ errorDetail }}</div>
+        </div>
       </div>
 
       <div class="popup-actions">
@@ -159,9 +162,25 @@ const openReleasePage = () => emit('open-release');
   margin-top: 16px;
 }
 
-.error-detail {
+.error-alert-content {
+  padding: 12px;
+  background: linear-gradient(135deg, #fff2f0 0%, #ffedeb 100%);
+  border: 1px solid #ffccc7;
+  border-radius: 8px;
+  border-left: 4px solid #ff4d4f;
+}
+
+.error-alert-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #cf1322;
+  margin-bottom: 4px;
+}
+
+.error-alert-detail {
   font-size: 13px;
   line-height: 1.5;
+  color: #a8071a;
 }
 
 .popup-actions {

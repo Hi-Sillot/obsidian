@@ -1,0 +1,37 @@
+/**
+ * Sillot Obsidian Plugin - 样式系统
+ * 
+ * 模块化 CSS 架构，按功能域拆分：
+ * - components.css   : UI 组件（Modal/表格/分页/工具栏）
+ * - enhancements.css : 增强功能（图片增强 + 代码块增强）
+ * - charts.css       : 图表渲染（Mermaid/ECharts/Chart.js）
+ * - misc.css         : 杂项样式（设置面板/树形结构等）
+ * 
+ * 使用方式：
+ * 1. 开发环境：直接在 HTML 中引入此文件
+ * 2. 生产环境：构建工具会自动合并所有模块
+ */
+
+/* ============================================
+   UI Components - UI 组件
+   Modal / Table / Pagination / Toolbar / Config Editor
+   ============================================ */
+@import url('./modules/components.css');
+
+/* ============================================
+   Enhancements - 增强功能
+   Image Enhancement / Code Block Enhancement
+   ============================================ */
+@import url('./modules/enhancements.css');
+
+/* ============================================
+   Chart Rendering - 图表渲染
+   Mermaid / ECharts / Chart.js / Flowchart.js
+   ============================================ */
+@import url('./modules/charts.css');
+
+/* ============================================
+   Miscellaneous - 杂项样式
+   Settings Panel / Tree Structure / Author List
+   ============================================ */
+@import url('./modules/misc.css');

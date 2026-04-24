@@ -1,4 +1,4 @@
-import { createApp, type App as VueApp, h, ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { createApp, type App as VueApp, h, ref, computed, onMounted, onUnmounted, watch, nextTick, shallowRef } from 'vue';
 import { Notice, MarkdownRenderer, Component, type App as ObsidianApp } from 'obsidian';
 import {
 	NTree,
@@ -79,13 +79,32 @@ export function createPullDocModal(options: PullDocModalOptions): {
 
 	// 预览模式：source=源码, rendered=渲染
 	const previewMode = ref<'source' | 'rendered'>('rendered');
-	// 渲染模式下的 DOM 容器引用
-	let renderedEl: HTMLElement | null = null;
+	// 渲染容器（使用 shallowRef 确保响应式追踪）
+	const renderedEl = shallowRef<HTMLElement | null>(null);
 	// Obsidian MarkdownRenderer 需要的 Component 实例
 	const renderComponent = new Component();
 	renderComponent.load();
 	// 防止重复渲染的标记
 	let lastRenderedKey = '';
+
+	// 清理渲染内容（解决模式切换时的 DOM 残留问题）
+	const cleanupRenderedContent = () => {
+		console.log('[PullDocModal] cleanupRenderedContent 调用, renderedEl:', !!renderedEl.value);
+		if (renderedEl.value) {
+			// 使用 Obsidian Component 的 unload 方法清理子组件和事件监听器
+			try {
+				renderComponent.unload();
+				renderComponent.load(); // 重新加载以供下次使用
+			} catch (e) {
+				console.warn('[PullDocModal] Component unload 失败:', e);
+			}
+			// 清空容器内容（保留引用，因为 DOM 始终存在）
+			renderedEl.value.empty();
+			renderedEl.value.innerHTML = '';
+			console.log('[PullDocModal] ✅ cleanup 完成');
+		}
+		lastRenderedKey = '';
+	};
 
 	// URL 输入状态
 	const urlInputValue = ref('');
@@ -343,25 +362,72 @@ export function createPullDocModal(options: PullDocModalOptions): {
 	// 使用 Obsidian MarkdownRenderer 渲染 markdown 内容到指定 DOM 元素
 	const renderWithObsidian = async (content: string, el: HTMLElement) => {
 		try {
+			// 先彻底清理容器：移除所有子节点和事件监听器
 			el.empty();
+			el.innerHTML = '';
+
+			// 使用新的 Component 实例进行渲染，避免残留
 			await MarkdownRenderer.render(options.obsidianApp, content, el, '', renderComponent);
 		} catch (error) {
 			console.error('[PullDocModal] Obsidian 渲染失败，回退为简单渲染:', error);
+			el.empty();
 			el.innerHTML = renderSimplePreview(content);
 		}
 	};
 
-	// 监听预览内容和模式变化，触发 Obsidian 渲染
-	// 使用 watch 而非 ref 回调，避免 DOM 修改触发 Vue 重渲染导致无限循环
-	watch([previewContent, previewMode], async ([content, mode]) => {
-		if (mode === 'rendered' && content && renderedEl) {
-			const renderKey = `${mode}::${content.substring(0, 100)}`;
-			if (renderKey === lastRenderedKey) return;
-			lastRenderedKey = renderKey;
-			await nextTick();
-			if (renderedEl) {
-				await renderWithObsidian(content, renderedEl);
+	// 双 Watch 分离策略：解决 ref 回调和 watch 时序问题
+	// Watch 1: 监听内容变化，标记需要渲染
+	// Watch 2: 监听 DOM 就绪，执行渲染
+
+	const pendingRenderContent = ref<string | null>(null);
+
+	// Watch 1: 内容/模式变化时，记录待渲染内容
+	watch([previewContent, previewMode], ([content, mode]) => {
+		console.log('[PullDocModal] [Watch1] 内容/模式变化:', { mode, hasContent: !!content });
+
+		if (mode === 'rendered' && content) {
+			pendingRenderContent.value = content;
+			console.log('[PullDocModal] [Watch1] 设置待渲染内容');
+		} else {
+			pendingRenderContent.value = null;
+			if (mode !== 'rendered') {
+				cleanupRenderedContent();
 			}
+		}
+	});
+
+	// Watch 2: DOM 就绪且有待渲染内容时，执行渲染
+	watch([() => renderedEl.value, pendingRenderContent], async ([el, content]) => {
+		console.log('[PullDocModal] [Watch2] DOM/内容状态:', { 
+			hasEl: !!el, 
+			elTag: el?.tagName,
+			hasContent: !!content,
+			contentLength: content?.length 
+		});
+
+		if (!el || !content) {
+			console.log('[PullDocModal] [Watch2] 跳过：DOM 或内容未就绪');
+			return;
+		}
+
+		const renderKey = `${content.length}::${content.substring(0, 50)}`;
+		console.log('[PullDocModal] [Watch2] 准备渲染:', { renderKey, lastRenderedKey });
+		
+		if (renderKey === lastRenderedKey) {
+			console.log('[PullDocModal] [Watch2] 跳过渲染：内容未变化');
+			return;
+		}
+		lastRenderedKey = renderKey;
+
+		cleanupRenderedContent();
+		await nextTick();
+
+		try {
+			renderWithObsidian(content, el);
+			console.log('[PullDocModal] [Watch2] ✅ 渲染完成');
+		} catch (error) {
+			console.error('[PullDocModal] [Watch2] ❌ 渲染失败:', error);
+			cleanupRenderedContent();
 		}
 	});
 
@@ -470,42 +536,64 @@ export function createPullDocModal(options: PullDocModalOptions): {
 		}
 
 		if (previewContent.value) {
-			if (previewMode.value === 'source') {
-				// 源码模式：显示原始 markdown 文本
-				return h('div', {
-					style: {
-						padding: '12px',
-						overflow: 'auto',
-						height: '100%',
-					},
-				}, [
-					h('pre', {
-						style: {
-							fontFamily: 'var(--font-monospace)',
-							fontSize: '13px',
-							lineHeight: '1.6',
-							whiteSpace: 'pre-wrap',
-							wordBreak: 'break-word',
-							margin: '0',
-							color: 'var(--text-normal)',
-						},
-					}, previewContent.value),
-				]);
-			}
-
-			// 渲染模式：使用 Obsidian MarkdownRenderer（通过 watch 触发，不在 ref 回调中调用）
-			return h('div', {
-				ref: (el: any) => {
-					if (el) {
-						renderedEl = el as HTMLElement;
-					}
-				},
-				style: {
-					padding: '12px',
-					overflow: 'auto',
-					height: '100%',
-				},
-				class: 'markdown-rendered pull-doc-rendered',
+			const content = previewContent.value;
+			const mode = previewMode.value;
+			// 使用 Naive UI NTabs 管理源码/渲染切换
+			// display-directive="show" 确保 DOM 始终存在，ref 回调可靠执行
+			return h(NTabs, {
+				value: mode,
+				'onUpdate:value': (val: string | number) => { previewMode.value = val as 'source' | 'rendered'; },
+				type: 'segment',
+				size: 'small',
+				style: { height: '100%', display: 'flex', flexDirection: 'column' },
+			}, {
+				default: () => [
+					h(NTabPane, {
+						name: 'source',
+						tab: '📝 源码',
+						displayDirective: 'show',
+					}, {
+						default: () => h('div', {
+							style: {
+								padding: '12px',
+								overflow: 'auto',
+								height: '100%',
+								maxHeight: 'calc(80vh - 180px)',
+							},
+						}, [
+							h('pre', {
+								style: {
+									fontFamily: 'var(--font-monospace)',
+									fontSize: '13px',
+									lineHeight: '1.6',
+									whiteSpace: 'pre-wrap',
+									wordBreak: 'break-word',
+									margin: '0',
+									color: 'var(--text-normal)',
+								},
+							}, content),
+						]),
+					}),
+					h(NTabPane, {
+						name: 'rendered',
+						tab: '📖 渲染',
+						displayDirective: 'show',  // 关键：DOM 始终存在
+					}, {
+						default: () => h('div', {
+							ref: (el: any) => {
+								console.log('[PullDocModal] renderedEl ref 回调:', !!el, el?.tagName);
+								if (el) renderedEl.value = el as HTMLElement;
+							},
+							style: {
+								padding: '12px',
+								overflow: 'auto',
+								height: '100%',
+								maxHeight: 'calc(80vh - 180px)',
+							},
+							class: 'markdown-rendered pull-doc-rendered',
+						}),
+					}),
+				],
 			});
 		}
 
@@ -719,31 +807,15 @@ export function createPullDocModal(options: PullDocModalOptions): {
 								overflow: 'hidden',
 							},
 						}, [
-							// 预览标题 + 模式切换
-							h('div', { style: { marginBottom: '8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' } }, [
+							// 预览标题（NTabs 已内置切换按钮，无需额外按钮）
+							h('div', { style: { marginBottom: '8px', flexShrink: 0 } }, [
 								h(NText, { strong: true, style: { fontSize: '14px' } }, { default: () => '预览' }),
-								h(NSpace, { size: 4, align: 'center' }, {
-									default: () => [
-										h(NButton, {
-											size: 'tiny',
-											secondary: previewMode.value !== 'source',
-											type: previewMode.value === 'source' ? 'primary' : 'default',
-											onClick: () => { previewMode.value = 'source'; },
-										}, { default: () => '📝 源码' }),
-										h(NButton, {
-											size: 'tiny',
-											secondary: previewMode.value !== 'rendered',
-											type: previewMode.value === 'rendered' ? 'primary' : 'default',
-											onClick: () => { previewMode.value = 'rendered'; },
-										}, { default: () => '📖 渲染' }),
-									],
-								}),
 							]),
-							// 预览内容
+							// 预览内容（NTabs 内置源码/渲染切换）
 							h(NCard, {
 								size: 'small',
 								style: { flex: '1', overflow: 'auto', minHeight: '0' },
-								contentStyle: { padding: '0', height: '100%', overflow: 'auto' },
+								contentStyle: { padding: '8px', height: '100%', overflow: 'auto' },
 							}, {
 								default: () => renderPreviewPanel(),
 							}),
@@ -777,7 +849,14 @@ export function createPullDocModal(options: PullDocModalOptions): {
 	return {
 		app,
 		unmount: () => {
-			renderComponent.unload();
+			// 先清理所有渲染内容
+			cleanupRenderedContent();
+			// 卸载 Component
+			try {
+				renderComponent.unload();
+			} catch (e) {
+				console.warn('[PullDocModal] unmount Component 失败:', e);
+			}
 			app.unmount();
 			container.innerHTML = '';
 		},

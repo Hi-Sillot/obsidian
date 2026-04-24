@@ -1,3 +1,7 @@
+/* ============================================
+   Module: components.css
+   ============================================ */
+
 .sillot-modal-80vw {
 	width: 80vw !important;
 }
@@ -2895,6 +2899,63 @@
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 24 24'%3E%3Cpath fill='%238e5cd9' d='M5 19q-.425 0-.712-.288T4 18t.288-.712T5 17h1v-7q0-2.075 1.25-3.687T10.5 4.2v-.7q0-.625.438-1.062T12 2t1.063.438T13.5 3.5v.7q2 .5 3.25 2.113T18 10v7h1q.425 0 .713.288T20 18t-.288.713T19 19zm7 3q-.825 0-1.412-.587T10 20h4q0 .825-.587 1.413T12 22m0-9q.425 0 .713-.288T13 12V9q0-.425-.288-.712T12 8t-.712.288T11 9v3q0 .425.288.713T12 13m0 3q.425 0 .713-.288T13 15t-.288-.712T12 14t-.712.288T11 15t.288.713T12 16'/%3E%3C/svg%3E");
 }
 
+/* Image Enhancement - Figure */
+
+/* ============================================
+   Module: enhancements.css
+   ============================================ */
+
+/* Image Enhancement - Figure */
+.sillot-figure {
+	display: inline-block;
+	margin: 16px auto;
+	text-align: center;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px;
+	background: var(--background-secondary);
+	max-width: 100%;
+}
+
+.sillot-figure img {
+	display: block;
+	margin: 0 auto;
+	max-width: 100%;
+	height: auto;
+	border-radius: 4px;
+}
+
+.sillot-figure__caption {
+	margin-top: 8px;
+	font-size: 13px;
+	color: var(--text-muted);
+	font-style: italic;
+	line-height: 1.4;
+	text-align: center;
+}
+
+.sillot-figure--responsive {
+	width: 100%;
+	display: block;
+}
+
+.sillot-figure--standalone {
+	display: block;
+	margin: 20px 0;
+}
+
+@media (max-width: 768px) {
+	.sillot-figure {
+		margin: 12px auto;
+		padding: 6px;
+	}
+
+	.sillot-figure__caption {
+		font-size: 12px;
+		margin-top: 6px;
+	}
+}
+
 .pull-doc-modal {
 	height: 80vh;
 	max-height: 80vh;
@@ -3554,10 +3615,1377 @@
 	font-family: var(--font-monospace);
 }
 
-.sillot-author-select-btn {
-	padding: 3px 10px;
+/* ============================================
+   Code Block Enhancement - 代码块增强
+   ============================================ */
+
+/* 基础增强标识 */
+.sillot-code-enhanced {
+	position: relative;
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+/* 行高亮效果 */
+.sillot-line-highlighted {
+	display: block;
+	background-color: rgba(59, 130, 246, 0.15); /* 蓝色半透明背景 */
+	border-left: 3px solid rgb(59, 130, 246); /* 蓝色左边框 */
+	margin: 0 -8px; /* 扩展高亮区域 */
+	padding: 0 8px; /* 补偿内边距 */
+}
+
+.sillot-code-has-highlights pre {
+	position: relative;
+}
+
+.sillot-code-line-highlighted code {
+	position: relative;
+}
+
+/* 深色主题适配 */
+.theme-dark .sillot-line-highlighted {
+	background-color: rgba(96, 165, 250, 0.2); /* 深色模式下更亮的蓝色 */
+	border-left-color: rgb(96, 165, 250);
+}
+
+/* 行聚焦效果 - 模糊非聚焦行 */
+.sillot-code-focus {
+	position: relative;
+}
+
+.sillot-line-blurred {
+	opacity: 0.25;
+	filter: blur(1.5px);
+	transition: opacity 0.3s ease, filter 0.3s ease;
+	user-select: none;
+	pointer-events: none;
+}
+
+.sillot-code-focus:hover .sillot-line-blurred {
+	opacity: 0.5;
+	filter: blur(0.5px);
+}
+
+/* 差异标记样式 */
+.sillot-diff-marker {
+	display: inline-block;
+	width: 16px;
+	height: 16px;
+	line-height: 16px;
+	text-align: center;
+	font-weight: bold;
 	font-size: 12px;
+	border-radius: 3px;
+	margin-right: 4px;
+	vertical-align: middle;
+}
+
+.sillot-diff-add {
+	background-color: rgba(34, 197, 94, 0.2); /* 绿色背景 */
+	color: rgb(22, 163, 74); /* 绿色文字 */
+	border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.sillot-diff-remove {
+	background-color: rgba(239, 68, 68, 0.2); /* 红色背景 */
+	color: rgb(220, 38, 38); /* 红色文字 */
+	border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.sillot-code-with-diffs code {
+	line-height: 1.6; /* 增加行间距以适应标记 */
+}
+
+/* 警告和错误标记 */
+.sillot-code-warning {
+	border-left: 4px solid rgb(234, 179, 8); /* 黄色边框 */
+	background-color: rgba(234, 179, 8, 0.05); /* 极淡黄色背景 */
+}
+
+.sillot-code-error {
+	border-left: 4px solid rgb(239, 68, 68); /* 红色边框 */
+	background-color: rgba(239, 68, 68, 0.05); /* 极淡红色背景 */
+}
+
+/* 词高亮效果 */
+.sillot-word-highlight {
+	background-color: rgba(250, 204, 21, 0.4); /* 黄色高亮 */
+	color: inherit;
+	padding: 1px 3px;
+	border-radius: 2px;
+	font-weight: 500;
+	box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.6);
+}
+
+.theme-dark .sillot-word-highlight {
+	background-color: rgba(251, 191, 36, 0.35);
+	box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.5);
+}
+
+/* 代码块折叠效果 */
+.sillot-code-fold-wrapper {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	overflow: hidden;
+	background: var(--background-secondary);
+}
+
+.sillot-code-fold-toggle {
+	width: 100%;
+	padding: 10px 16px;
+	background: transparent;
+	border: none;
+	border-bottom: 1px solid var(--background-modifier-border);
 	cursor: pointer;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text-muted);
+	text-align: left;
+	transition: background 0.2s, color 0.2s;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.sillot-code-fold-toggle:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.sillot-code-fold-toggle::before {
+	content: '📦';
+	font-size: 14px;
+}
+
+.sillot-code-fold-content {
+	padding: 12px;
+	overflow-x: auto;
+}
+
+.sillot-code-folded pre {
+	margin: 0;
+	border-radius: 0;
+	border: none;
+}
+
+.sillot-code-expanded {
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.sillot-line-highlighted {
+		margin: 0 -4px;
+		padding: 0 4px;
+		border-left-width: 2px;
+	}
+
+	.sillot-word-highlight {
+		padding: 0 2px;
+	}
+
+	.sillot-code-fold-toggle {
+		padding: 8px 12px;
+		font-size: 12px;
+	}
+
+	.sillot-code-fold-content {
+		padding: 8px;
+	}
+}
+
+/* 动画效果（可选） */
+@keyframes sillot-highlight-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.7; }
+}
+
+.sillot-code-enhanced:hover .sillot-line-highlighted {
+	animation: sillot-highlight-pulse 2s ease-in-out infinite;
+}
+
+/* ============================================
+   Special Containers - 特殊容器
+   Demo Wrapper / NPM-to / Table Enhanced
+   ============================================ */
+
+/* Demo Wrapper - 代码演示容器 */
+.sillot-custom-demo-wrapper {
+	position: relative;
+	margin: 16px 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--background-secondary);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.sillot-demo-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 16px;
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 13px;
+}
+
+.sillot-demo-title {
+	font-weight: 600;
+	color: var(--text-normal);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.sillot-demo-actions {
+	display: flex;
+	gap: 6px;
+}
+
+.sillot-demo-btn {
+	width: 28px;
+	height: 28px;
+	border: none;
+	background: transparent;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.2s, transform 0.1s;
+	color: var(--text-muted);
+}
+
+.sillot-demo-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+	transform: scale(1.1);
+}
+
+.sillot-demo-btn:active {
+	transform: scale(0.95);
+}
+
+.sillot-demo-content {
+	padding: 16px;
+	overflow-x: auto;
+	background: var(--background-primary);
+}
+
+.sillot-demo-collapsed .sillot-demo-content {
+	display: none;
+}
+
+.sillot-demo-collapsed {
+	max-height: 48px;
+}
+
+/* NPM-to 容器 */
+.sillot-custom-npm-to {
+	margin: 16px 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--background-secondary);
+}
+
+.sillot-npm-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 16px;
+	background: linear-gradient(135deg, #cb3837 0%, #da3f3e 100%);
+	color: white;
+	font-size: 14px;
+	font-weight: 500;
+}
+
+.sillot-npm-icon {
+	font-size: 18px;
+}
+
+.sillot-npm-title {
+	flex: 1;
+}
+
+.sillot-npm-badge {
+	background: rgba(255, 255, 255, 0.2);
+	padding: 2px 8px;
+	border-radius: 12px;
+	font-size: 11px;
+	text-transform: uppercase;
+}
+
+.sillot-npm-code-wrapper {
+	position: relative;
+	background: #1e1e1e;
+	padding: 16px;
+	margin: 0;
+}
+
+.sillot-npm-code-wrapper pre,
+.sillot-npm-code-wrapper code {
+	margin: 0 !important;
+	background: transparent !important;
+	color: #d4d4d4 !important;
+	font-family: 'Fira Code', 'Consolas', monospace !important;
+	font-size: 13px !important;
+	line-height: 1.5 !important;
+}
+
+.sillot-npm-copy-btn {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	padding: 4px 12px;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 4px;
+	color: rgba(255, 255, 255, 0.8);
+	font-size: 11px;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.sillot-npm-copy-btn:hover {
+	background: rgba(255, 255, 255, 0.2);
+	color: white;
+}
+
+.sillot-npm-footer {
+	padding: 8px 16px;
+	background: var(--background-primary);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.sillot-npm-hint {
+	font-size: 12px;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+/* Table Enhanced - 增强表格 */
+.sillot-table-enhanced {
+	margin: 16px 0;
+	overflow-x: auto;
+}
+
+.sillot-table-wrapper {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.sillot-table-enhanced table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.sillot-table-header {
+	background: var(--background-secondary) !important;
+	font-weight: 600 !important;
+	color: var(--text-normal) !important;
+	padding: 12px 16px !important;
+	text-align: left !important;
+	border-bottom: 2px solid var(--background-modifier-border) !important;
+	user-select: none;
+	transition: background 0.15s;
+}
+
+.sillot-table-header:hover {
+	background: var(--background-modifier-hover) !important;
+}
+
+.sillot-table-row-even {
+	background: rgba(var(--interactive-accent-rgb), 0.03);
+}
+
+.sillot-table-enhanced td {
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	color: var(--text-normal);
+}
+
+.sillot-table-enhanced tr:hover td {
+	background: var(--background-modifier-hover);
+}
+
+.sillot-table-enhanced tr:last-child td {
+	border-bottom: none;
+}
+
+/* 深色主题适配 */
+.theme-dark .sillot-custom-demo-wrapper {
+	border-color: rgba(255, 255, 255, 0.1);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.theme-dark .sillot-demo-header {
+	background: var(--background-secondary);
+	border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .sillot-npm-code-wrapper {
+	background: #0d0d0d;
+}
+
+.theme-dark .sillot-npm-copy-btn {
+	background: rgba(255, 255, 255, 0.05);
+	border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .sillot-table-wrapper {
+	border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.sillot-custom-demo-wrapper {
+		margin: 12px 0;
+		border-radius: 6px;
+	}
+
+	.sillot-demo-header {
+		padding: 8px 12px;
+		font-size: 12px;
+	}
+
+	.sillot-demo-title {
+		font-size: 11px;
+	}
+
+	.sillot-demo-btn {
+		width: 26px;
+		height: 26px;
+		font-size: 12px;
+	}
+
+	.sillot-demo-content {
+		padding: 12px;
+	}
+
+	.sillot-custom-npm-to {
+		margin: 12px 0;
+	}
+
+	.sillot-npm-header {
+		padding: 10px 12px;
+		font-size: 13px;
+	}
+
+	.sillot-npm-code-wrapper {
+		padding: 12px;
+	}
+
+	.sillot-table-enhanced table {
+		font-size: 12px;
+	}
+
+	.sillot-table-header,
+	.sillot-table-enhanced td {
+		padding: 8px 12px;
+	}
+}
+
+/* ============================================
+   Inline Syntax - 内联语法
+   Abbr / Annotation / Icon / Plot / PDF
+   ============================================ */
+
+/* Abbr - 缩写 */
+.sillot-abbr {
+	border-bottom: 1px dotted var(--interactive-accent);
+	cursor: help;
+	color: var(--text-normal);
+	font-style: normal;
+	text-decoration: none;
+	position: relative;
+	transition: color 0.2s;
+}
+
+.sillot-abbr:hover {
+	color: var(--interactive-accent);
+	border-bottom-style: solid;
+}
+
+.sillot-abbr::after {
+	content: attr(title);
+	position: absolute;
+	bottom: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	padding: 4px 8px;
+	border-radius: 4px;
+	font-size: 11px;
+	white-space: nowrap;
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 0.2s, visibility 0.2s;
+	z-index: 100;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.sillot-abbr:hover::after {
+	opacity: 1;
+	visibility: visible;
+}
+
+/* Annotation - 注释/引用标记 */
+.sillot-annotation {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1;
+	color: var(--text-muted);
+	background: var(--background-modifier-box-shadow);
+	border-radius: 3px;
+	cursor: pointer;
+	vertical-align: super;
+	margin-left: 2px;
+	transition: all 0.15s;
+	user-select: none;
+}
+
+.sillot-annotation:hover {
+	color: var(--interactive-accent);
+	background: var(--interactive-accent-hover);
+	transform: scale(1.1);
+}
+
+/* Icon - 图标 */
+.sillot-inline-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1em;
+	height: 1em;
+	vertical-align: -0.125em;
+	fill: currentColor;
+}
+
+.sillot-inline-icon svg {
+	width: 100%;
+	height: 100%;
+}
+
+.sillot-icon-fallback {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	font-family: monospace;
+}
+
+.sillot-icon-info { color: #3b82f6; }
+.sillot-icon-warning { color: #f59e0b; }
+.sillot-icon-success { color: #10b981; }
+.sillot-icon-error { color: #ef4444; }
+.sillot-icon-tip { color: #8b5cf6; }
+.sillot-icon-danger { color: #dc2626; }
+.sillot-icon-note { color: #6b7280; }
+
+/* Plot - 图表 */
+.sillot-plot-block,
+.sillot-plot-container {
+	margin: 16px 0;
+	padding: 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+}
+
+.sillot-chart {
+	width: 100%;
+}
+
+/* Bar Chart - 柱状图 */
+.sillot-bar-chart {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.sillot-bar-item {
+	display: grid;
+	grid-template-columns: 80px 1fr 50px;
+	align-items: center;
+	gap: 12px;
+}
+
+.sillot-bar-label {
+	font-size: 13px;
+	color: var(--text-muted);
+	text-align: right;
+}
+
+.sillot-bar-track {
+	height: 20px;
+	background: var(--background-modifier-box-shadow);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.sillot-bar-fill {
+	height: 100%;
+	border-radius: 4px;
+	transition: width 0.5s ease-out;
+	min-width: 4px;
+}
+
+.sillot-bar-value {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+/* Line Chart - 折线图 */
+.sillot-line-chart {
+	position: relative;
+	min-height: 200px;
+}
+
+.sillot-line-chart svg {
+	width: 100%;
+	height: 180px;
+}
+
+.sillot-line-labels {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 8px;
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+/* Pie Chart - 饼图 */
+.sillot-pie-chart {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+}
+
+.sillot-pie-graph {
+	width: 150px;
+	height: 150px;
+	border-radius: 50%;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sillot-pie-legend {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	width: 100%;
+}
+
+.sillot-pie-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+}
+
+.sillot-pie-color {
+	width: 12px;
+	height: 12px;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+
+.sillot-pie-label {
+	color: var(--text-normal);
+}
+
+.sillot-plot-error {
+	color: var(--text-error);
+	font-size: 13px;
+	text-align: center;
+	padding: 16px;
+}
+
+/* PDF 嵌入 */
+.sillot-pdf-embed {
+	margin: 16px 0;
+}
+
+.sillot-pdf-wrapper {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--background-primary);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.sillot-pdf-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 16px;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.sillot-pdf-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.sillot-pdf-link {
+	font-size: 12px;
+	color: var(--interactive-accent);
+	text-decoration: none;
+	transition: color 0.15s;
+}
+
+.sillot-pdf-link:hover {
+	color: var(--interactive-accent-hover);
+	text-decoration: underline;
+}
+
+.sillot-pdf-frame {
+	display: block;
+}
+
+.sillot-pdf-error {
+	color: var(--text-error);
+	font-size: 13px;
+	text-align: center;
+	padding: 24px;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+/* 深色主题适配 */
+.theme-dark .sillot-abbr::after {
+	background: var(--background-primary);
+	border-color: var(--background-modifier-border);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.theme-dark .sillot-annotation {
+	background: rgba(255, 255, 255, 0.05);
+}
+
+.theme-dark .sillot-pdf-wrapper {
+	border-color: rgba(255, 255, 255, 0.1);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.sillot-abbr::after {
+		font-size: 10px;
+		padding: 3px 6px;
+	}
+
+	.sillot-bar-item {
+		grid-template-columns: 60px 1fr 40px;
+		gap: 8px;
+	}
+
+	.sillot-bar-label,
+	.sillot-bar-value {
+		font-size: 11px;
+	}
+
+	.sillot-pie-graph {
+		width: 120px;
+		height: 120px;
+	}
+
+	.sillot-pdf-wrapper {
+		border-radius: 6px;
+	}
+}
+
+/* ============================================
+   Audio Reader - 音频阅读器 (Plume 兼容)
+   ============================================ */
+
+/* 容器 */
+.sillot-audio-reader {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	vertical-align: middle;
+	margin: 0 2px;
+	line-height: 1.6;
+}
+
+/* 包装器 */
+.sillot-audio-wrapper {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 8px;
+	border-radius: 20px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.sillot-audio-wrapper:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* 标题文本 */
+.sillot-audio-title {
+	color: var(--text-normal);
+	font-weight: 500;
+	font-size: 13px;
+	user-select: text;
+}
+
+/* 播放按钮 */
+.sillot-audio-play-btn {
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: white;
+	cursor: pointer;
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+	box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+	position: relative;
+	overflow: hidden;
+}
+
+.sillot-audio-play-btn::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+	transform: scale(0);
+	transition: transform 0.3s ease;
+}
+
+.sillot-audio-play-btn:hover::before {
+	transform: scale(1);
+}
+
+.sillot-audio-play-btn:hover {
+	transform: scale(1.05);
+	box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+}
+
+.sillot-audio-play-btn:active {
+	transform: scale(0.95);
+}
+
+.sillot-audio-playing {
+	animation: sillot-pulse-ring 1.5s ease-in-out infinite;
+}
+
+@keyframes sillot-pulse-ring {
+	0%, 100% { box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3); }
+	50% { box-shadow: 0 2px 16px rgba(118, 75, 162, 0.6), 0 0 24px rgba(102, 126, 234, 0.2); }
+}
+
+/* 图标 SVG */
+.sillot-audio-icon {
+	width: 14px;
+	height: 14px;
+	fill: currentColor;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+
+/* 时长显示 */
+.sillot-audio-duration {
+	font-size: 11px;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+	min-width: 32px;
+	text-align: center;
+}
+
+/* 进度条容器 */
+.sillot-audio-progress {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 4px;
+}
+
+.sillot-audio-progress-bar {
+	flex: 1;
+	height: 4px;
+	min-width: 60px;
+	max-width: 120px;
+	background: var(--background-modifier-border);
+	border-radius: 2px;
+	cursor: pointer;
+	overflow: hidden;
+	position: relative;
+}
+
+.sillot-audio-progress-bar:hover {
+	height: 6px;
+}
+
+.sillot-audio-progress-fill {
+	height: 100%;
+	background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+	border-radius: 2px;
+	transition: width 0.1s linear;
+	position: relative;
+}
+
+.sillot-audio-progress-fill::after {
+	content: '';
+	position: absolute;
+	right: -4px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: white;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+.sillot-audio-progress-bar:hover .sillot-audio-progress-fill::after {
+	opacity: 1;
+}
+
+/* 时间显示 */
+.sillot-audio-current-time,
+.sillot-audio-total-time,
+.sillot-audio-separator {
+	font-size: 11px;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.sillot-audio-separator {
+	margin: 0 2px;
+}
+
+/* 错误状态 */
+.sillot-audio-error {
+	color: var(--text-error, #ef4444);
+	font-size: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	background: rgba(239, 68, 68, 0.1);
+	border-radius: 12px;
+	border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.sillot-audio-error-state .sillot-audio-wrapper {
+	border-color: var(--text-error, #ef4444);
+	background: rgba(239, 68, 68, 0.05);
+}
+
+/* 深色主题适配 */
+.theme-dark .sillot-audio-wrapper {
+	background: rgba(30, 30, 30, 0.8);
+	border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .sillot-audio-wrapper:hover {
+	background: rgba(40, 40, 40, 0.9);
+	border-color: rgba(102, 126, 234, 0.5);
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.theme-dark .sillot-audio-play-btn {
+	box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.theme-dark .sillot-audio-playing {
+	animation: sillot-pulse-ring-dark 1.5s ease-in-out infinite;
+}
+
+@keyframes sillot-pulse-ring-dark {
+	0%, 100% { box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4); }
+	50% { box-shadow: 0 2px 18px rgba(118, 75, 162, 0.7), 0 0 30px rgba(102, 126, 234, 0.3); }
+}
+
+.theme-dark .sillot-audio-progress-fill::after {
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.sillot-audio-wrapper {
+		padding: 2px 6px;
+		gap: 4px;
+	}
+
+	.sillot-audio-play-btn {
+		width: 26px;
+		height: 26px;
+		min-width: 26px;
+	}
+
+	.sillot-audio-icon {
+		width: 12px;
+		height: 12px;
+	}
+
+	.sillot-audio-title {
+		font-size: 12px;
+	}
+
+	.sillot-audio-duration,
+	.sillot-audio-current-time,
+	.sillot-audio-total-time {
+		font-size: 10px;
+	}
+
+	.sillot-audio-progress-bar {
+		min-width: 40px;
+		max-width: 80px;
+	}
+}
+
+/* ============================================
+
+
+/* ============================================
+   Module: charts.css
+   ============================================ */
+
+/* ============================================
+   Chart Rendering - 图表渲染
+   ============================================ */
+
+/* 基础图表容器 */
+.sillot-chart-container,
+.sillot-mermaid-wrapper {
+	position: relative;
+	margin: 16px 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--background-secondary);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 图表头部 */
+.sillot-chart-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 16px;
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 13px;
+}
+
+.sillot-chart-type {
+	font-weight: 600;
+	color: var(--text-normal);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.sillot-chart-type::before {
+	content: '📊';
+	font-size: 14px;
+}
+
+/* Mermaid 特殊标识 */
+.sillot-mermaid-wrapper .sillot-chart-type::before {
+	content: '🔀';
+}
+
+/* 操作按钮 */
+.sillot-chart-actions {
+	display: flex;
+	gap: 6px;
+}
+
+.sillot-chart-action-btn {
+	width: 28px;
+	height: 28px;
+	border: none;
+	background: transparent;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.2s, transform 0.1s;
+	color: var(--text-muted);
+}
+
+.sillot-chart-action-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+	transform: scale(1.1);
+}
+
+.sillot-chart-action-btn:active {
+	transform: scale(0.95);
+}
+
+/* 图表画布区域 */
+.sillot-chart-canvas {
+	position: relative;
+	min-height: 200px;
+	padding: 16px;
+	overflow: auto;
+}
+
+/* Mermaid 包装器特殊样式 */
+.sillot-mermaid-wrapper pre.language-mermaid {
+	margin: 0 !important;
+	background: transparent !important;
+	border: none !important;
+	padding: 12px !important;
+	border-radius: 0 !important;
+}
+
+.sillot-mermaid-wrapper pre.language-mermaid code {
+	font-family: var(--font-monospace) !important;
+	font-size: 13px !important;
+	line-height: 1.6 !important;
+}
+
+/* Mermaid SVG 样式 */
+.sillot-mermaid-wrapper svg {
+	max-width: 100% !important;
+	height: auto !important;
+	display: block;
+	margin: 0 auto;
+}
+
+/* 加载状态 */
+.sillot-chart-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 200px;
+	gap: 12px;
+	color: var(--text-muted);
+	font-size: 14px;
+}
+
+.sillot-spinner {
+	width: 40px;
+	height: 40px;
+	border: 3px solid var(--background-modifier-border);
+	border-top-color: var(--interactive-accent);
+	border-radius: 50%;
+	animation: sillot-spin 1s linear infinite;
+}
+
+@keyframes sillot-spin {
+	to { transform: rotate(360deg); }
+}
+
+/* 错误状态 */
+.sillot-chart-error {
+	padding: 24px;
+	text-align: center;
+	color: var(--text-error);
+}
+
+.sillot-error-icon {
+	font-size: 48px;
+	margin-bottom: 12px;
+}
+
+.sillot-chart-error h4 {
+	margin: 0 0 8px 0;
+	font-size: 16px;
+	color: var(--text-error);
+}
+
+.sillot-chart-error p {
+	margin: 0 0 12px 0;
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+.sillot-error-details {
+	background: rgba(239, 68, 68, 0.1);
+	border: 1px solid rgba(239, 68, 68, 0.2);
+	border-radius: 4px;
+	padding: 12px;
+	font-size: 11px;
+	text-align: left;
+	max-height: 150px;
+	overflow-y: auto;
+	font-family: var(--font-monospace);
+	color: var(--text-error);
+	word-break: break-all;
+}
+
+.sillot-chart-error-state {
+	border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+/* 全屏模式 */
+.sillot-chart-fullscreen {
+	position: fixed !important;
+	top: 0 !important;
+	left: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	z-index: 1000 !important;
+	margin: 0 !important;
+	border-radius: 0 !important;
+	max-width: none !important;
+	max-height: none !important;
+	width: 100vw !important;
+	height: 100vh !important;
+	background: var(--background-primary) !important;
+}
+
+.sillot-chart-fullscreen .sillot-chart-canvas {
+	height: calc(100vh - 50px) !important;
+	overflow: auto;
+}
+
+/* Toast 提示 */
+.sillot-toast {
+	position: fixed;
+	bottom: 20px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	padding: 10px 20px;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	z-index: 9999;
+	opacity: 1;
+	transition: opacity 0.3s, transform 0.3s;
+	pointer-events: none;
+}
+
+.sillot-toast-hide {
+	opacity: 0;
+	transform: translateX(-50%) translateY(10px);
+}
+
+/* ECharts/Chart.js Canvas 样式 */
+.sillot-chart-canvas canvas {
+	max-width: 100% !important;
+	height: auto !important;
+}
+
+/* 深色主题适配 */
+.theme-dark .sillot-chart-container,
+.theme-dark .sillot-mermaid-wrapper {
+	border-color: rgba(255, 255, 255, 0.1);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.theme-dark .sillot-chart-header {
+	background: var(--background-secondary);
+	border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .sillot-spinner {
+	border-color: rgba(255, 255, 255, 0.1);
+	border-top-color: var(--interactive-accent);
+}
+
+.theme-dark .sillot-error-details {
+	background: rgba(239, 68, 68, 0.15);
+	border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.sillot-chart-container,
+	.sillot-mermaid-wrapper {
+		margin: 12px 0;
+		border-radius: 6px;
+	}
+
+	.sillot-chart-header {
+		padding: 8px 12px;
+		font-size: 12px;
+	}
+
+	.sillot-chart-type {
+		font-size: 11px;
+	}
+
+	.sillot-chart-action-btn {
+		width: 26px;
+		height: 26px;
+		font-size: 12px;
+	}
+
+	.sillot-chart-canvas {
+		padding: 12px;
+		min-height: 150px;
+	}
+
+	.sillot-chart-loading {
+		min-height: 150px;
+	}
+
+	.sillot-toast {
+		font-size: 12px;
+		padding: 8px 16px;
+	}
+}
+
+/* 打印优化 */
+@media print {
+	.sillot-chart-header {
+		display: none;
+	}
+
+	.sillot-chart-action-btn {
+		display: none;
+	}
+
+	.sillot-chart-container,
+	.sillot-mermaid-wrapper {
+		break-inside: avoid;
+		page-break-inside: avoid;
+		border: 1px solid #ccc;
+	}
+}
+
+
+/* ============================================
+   Module: misc.css
+   ============================================ */
+
+.sillot-author-select-btn {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 4px;
 	background: var(--interactive-normal);
@@ -3816,6 +5244,152 @@
 	word-break: break-all;
 }
 
+/* ============================================
+   Experience Enhancement - 体验优化
+   Watermark / Include / Code Tree
+   ============================================ */
+
+/* Watermark - 水印 */
+.sillot-watermark-container {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	overflow: hidden;
+	z-index: 1;
+}
+
+.sillot-watermark {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	align-content: flex-start;
+}
+
+.sillot-wm-item {
+	position: relative;
+	width: 180px;
+	height: 120px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--wm-font-size, 14px);
+	color: var(--wm-color, #000000);
+	opacity: var(--wm-opacity, 0.1);
+	user-select: none;
+	transform: rotate(-20deg);
+	white-space: nowrap;
+	font-weight: 600;
+	letter-spacing: 2px;
+}
+
+.sillot-wm-item::before {
+	content: var(--wm-text, 'Sillot');
+}
+
+/* Include - 文件引用 */
+.sillot-include {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	margin: 16px 0;
+	overflow: hidden;
+	background: var(--background-secondary);
+	transition: border-color 0.15s;
+}
+
+.sillot-include:hover {
+	border-color: var(--interactive-accent-hover);
+}
+
+.sillot-include-loading {
+	padding: 24px;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: 13px;
+	animation: include-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes include-pulse {
+	0%, 100% { opacity: 0.5; }
+	50% { opacity: 1; }
+}
+
+.sillot-include-loaded {
+	padding: 0;
+	background: var(--background-primary);
+}
+
+.sillot-include-error {
+	padding: 16px;
+	color: var(--text-error);
+	font-size: 13px;
+	text-align: center;
+	background: rgba(239, 68, 68, 0.05);
+	border-radius: 4px;
+	margin: 8px;
+}
+
+/* Code Tree - 代码树 */
+.sillot-code-tree,
+.sillot-code-tree-rendered {
+	font-family: var(--font-monospace) !important;
+	font-size: 13px !important;
+	line-height: 1.8 !important;
+	padding: 12px 16px !important;
+	background: var(--background-secondary) !important;
+	border: 1px solid var(--background-modifier-border) !important;
+	border-radius: 6px !important;
+	margin: 12px 0 !important;
+	overflow-x: auto !important;
+	white-space: pre-wrap !important;
+	word-break: keep-all !important;
+}
+
+.sillot-tree-name {
+	color: var(--text-normal);
+	cursor: pointer;
+	transition: color 0.15s;
+}
+
+.sillot-tree-name:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
+}
+
+/* 深色主题适配 */
+.theme-dark .sillot-watermark-container {
+	opacity: 0.7;
+}
+
+.theme-dark .sillot-include {
+	border-color: rgba(255, 255, 255, 0.08);
+}
+
+.theme-dark .sillot-code-tree,
+.theme-dark .sillot-code-tree-rendered {
+	border-color: rgba(255, 255, 255, 0.06);
+	background: rgba(30, 32, 34, 0.8) !important;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.sillot-wm-item {
+		width: 140px;
+		height: 90px;
+		font-size: 11px;
+	}
+
+	.sillot-code-tree,
+	.sillot-code-tree-rendered {
+		font-size: 11px !important;
+		padding: 10px 12px !important;
+	}
+}
+
 .sillot-bigraph-node-modal .modal-content {
 	padding: 20px;
 }
@@ -3840,6 +5414,304 @@
 	display: flex;
 	gap: 8px;
 	margin: 16px 0;
+}
+
+/* ============================================
+   TTS - 文本朗读 (Text-to-Speech)
+   ============================================ */
+
+/* TTS Toggle Button - 切换按钮 */
+.sillot-tts-toggle {
+	position: fixed;
+	bottom: 24px;
+	right: 24px;
+	z-index: 1000;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 18px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #fff;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	border: none;
+	border-radius: 25px;
+	cursor: pointer;
+	box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+	transition: all 0.3s ease;
+	user-select: none;
+}
+
+.sillot-tts-toggle:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
+
+.sillot-tts-toggle:active {
+	transform: translateY(0);
+}
+
+/* TTS Panel - 控制面板 */
+.sillot-tts-panel {
+	position: fixed;
+	bottom: 80px;
+	right: 24px;
+	width: 320px;
+	max-height: 480px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+	z-index: 1001;
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(20px) scale(0.95);
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	overflow: hidden;
+}
+
+.sillot-tts-panel-visible {
+	opacity: 1;
+	visibility: visible;
+	transform: translateY(0) scale(1);
+}
+
+/* Panel Header */
+.sillot-tts-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 16px;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: #fff;
+}
+
+.sillot-tts-title {
+	font-size: 14px;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.sillot-tts-close {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	color: rgba(255, 255, 255, 0.9);
+	background: transparent;
+	border: none;
+	border-radius: 50%;
+	cursor: pointer;
+	transition: all 0.15s;
+}
+
+.sillot-tts-close:hover {
+	background: rgba(255, 255, 255, 0.2);
+	color: #fff;
+}
+
+/* Controls Container */
+.sillot-tts-controls {
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+/* Main Buttons */
+.sillot-tts-main-btns {
+	display: flex;
+	justify-content: center;
+	gap: 12px;
+}
+
+.sillot-tts-btn {
+	width: 50px;
+	height: 50px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	color: var(--text-normal);
+	background: var(--interactive-normal);
+	border: 2px solid var(--background-modifier-border);
+	border-radius: 50%;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.sillot-tts-btn:hover {
+	background: var(--interactive-hover);
+	border-color: var(--interactive-accent);
+	transform: scale(1.05);
+}
+
+.sillot-tts-btn:active {
+	transform: scale(0.95);
+}
+
+.sillot-tts-play {
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	border-color: transparent;
+	color: #fff;
+}
+
+.sillot-tts-play:hover {
+	box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Settings */
+.sillot-tts-settings {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 12px;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+.sillot-tts-setting {
+	display: grid;
+	grid-template-columns: 40px 1fr 45px;
+	align-items: center;
+	gap: 10px;
+}
+
+.sillot-tts-setting label {
+	font-size: 12px;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.sillot-tts-setting input[type="range"] {
+	width: 100%;
+	height: 4px;
+	appearance: none;
+	background: var(--background-modifier-box-shadow);
+	border-radius: 2px;
+	outline: none;
+	cursor: pointer;
+}
+
+.sillot-tts-setting input[type="range"]::-webkit-slider-thumb {
+	appearance: none;
+	width: 16px;
+	height: 16px;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	border-radius: 50%;
+	cursor: pointer;
+	box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+	transition: transform 0.15s;
+}
+
+.sillot-tts-setting input[type="range"]::-webkit-slider-thumb:hover {
+	transform: scale(1.2);
+}
+
+.sillot-tts-value {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--interactive-accent);
+	text-align: right;
+}
+
+/* Voice Select */
+.sillot-tts-voice-select {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sillot-tts-voice-select label {
+	font-size: 12px;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.sillot-tts-voice-list {
+	padding: 8px 12px;
+	font-size: 12px;
+	color: var(--text-normal);
+	background: var(--interactive-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	outline: none;
+	cursor: pointer;
+	transition: border-color 0.15s;
+}
+
+.sillot-tts-voice-list:focus,
+.sillot-tts-voice-list:hover {
+	border-color: var(--interactive-accent);
+}
+
+/* Status & Progress */
+.sillot-tts-status {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.sillot-tts-status-text {
+	font-size: 12px;
+	color: var(--text-muted);
+	text-align: center;
+	font-weight: 500;
+}
+
+.sillot-tts-progress-bar {
+	height: 4px;
+	background: var(--background-modifier-box-shadow);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.sillot-tts-progress-fill {
+	height: 100%;
+	width: 0%;
+	background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+	border-radius: 2px;
+	transition: width 0.3s ease-out;
+}
+
+/* 深色主题适配 */
+.theme-dark .sillot-tts-toggle {
+	box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.theme-dark .sillot-tts-panel {
+	border-color: rgba(255, 255, 255, 0.08);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.sillot-tts-toggle {
+		bottom: 16px;
+		right: 16px;
+		padding: 8px 14px;
+		font-size: 12px;
+	}
+
+	.sillot-tts-panel {
+		bottom: 70px;
+		right: 16px;
+		left: 16px;
+		width: auto;
+		max-width: 360px;
+	}
+
+	.sillot-tts-btn {
+		width: 44px;
+		height: 44px;
+		font-size: 18px;
+	}
 }
 
 .bigraph-modal-actions button {
