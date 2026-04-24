@@ -38,10 +38,13 @@ export class CodeBlockEnhanceHandler extends BaseSyntaxHandler {
 		const codeElement = pre.querySelector('code');
 		if (!codeElement) return;
 
-		// 获取代码块的语言类名（如 language-js）
 		const classList = Array.from(pre.classList);
 		const langClass = classList.find(cls => cls.startsWith('language-'));
 		const language = langClass ? langClass.replace('language-', '') : '';
+
+		if (language === 'mermaid') {
+			return;
+		}
 
 		// 解析元数据（从类名或 data 属性中提取）
 		const meta = this.parseCodeBlockMeta(pre, language, classList);

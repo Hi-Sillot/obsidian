@@ -452,6 +452,27 @@ export class VuePressPublisherSettingTab extends PluginSettingTab {
 					this.plugin.settings.logFilePath = value;
 					await this.plugin.saveSettings();
 				}));
+
+		containerEl.createEl('h3', { text: '高级依赖侧载' });
+
+		new Setting(containerEl)
+			.setName('侧载包路径')
+			.setDesc((() => {
+				const f = document.createDocumentFragment();
+				f.appendText('高级功能依赖包（图表库等）的加载路径，相对于仓库根目录。');
+				f.createEl('br');
+				f.appendText('此文件由 `bun run build:ext` 单独构建，不包含在插件主包中。');
+				f.createEl('br');
+				f.appendText('留空则禁用所有依赖侧载功能（回退到内置实现）。');
+				return f;
+			})())
+			.addText(text => text
+				.setPlaceholder('./sillot_pro_ext.js')
+				.setValue(this.plugin.settings.extPath || '')
+				.onChange(async (value) => {
+					this.plugin.settings.extPath = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	private renderPackPluginSection(containerEl: HTMLElement) {

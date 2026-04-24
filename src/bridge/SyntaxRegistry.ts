@@ -249,6 +249,8 @@ export class SyntaxRegistry {
 
 		if (TabsHandler.TAB_TYPES.has(containerType)) {
 			container = await this.tabsHandler.buildContainerWithGroupId(containerType, title, tabGroupId, contentText, ctx);
+		} else if (ChartHandler.CHART_TYPES.has(containerType)) {
+			container = this.chartHandler.createChartContainer(containerType, contentText);
 		} else if (containerType === 'cedoss') {
 			container = await this.createCedossContainerFromText(contentText, ctx);
 		} else {

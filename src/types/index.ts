@@ -28,6 +28,7 @@ export interface PluginSettings {
 		fontSize?: number;
 		color?: string;
 	};
+	extPath: string;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -53,6 +54,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	updateChannel: 'github' as const,
 	updateRepo: 'Hi-Sillot/obsidian',
 	lastCheckTime: null,
+	extPath: './sillot_pro_ext.js',
 };
 
 export interface PluginSyncInfo {

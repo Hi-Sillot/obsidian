@@ -1,123 +1,104 @@
 import type VuePressPublisherPlugin from '../../main';
 import { BaseSyntaxHandler } from './SyntaxHandler';
-import { MarkdownPostProcessorContext, MarkdownRenderer } from 'obsidian';
+import { MarkdownPostProcessorContext } from 'obsidian';
+
+declare global {
+	interface Window {
+		SillotExt?: {
+			echarts: any;
+			ChartJS: any;
+			parseFlowchart: any;
+			Transformer: any;
+			Markmap: any;
+			globalCSS?: string;
+		};
+	}
+}
 
 interface ChartConfig {
-	type: 'mermaid' | 'echarts' | 'chartjs' | 'flowchart';
+	type: 'echarts' | 'chartjs' | 'flowchart' | 'markmap';
 	rawContent: string;
 	options?: Record<string, unknown>;
 }
 
-interface LoadedLibrary {
-	name: string;
-	loaded: boolean;
-	promise?: Promise<any>;
-	error?: Error;
+interface ExtLibraries {
+	echarts: any;
+	ChartJS: any;
+	parseFlowchart: any;
+	Transformer: any;
+	Markmap: any;
+	globalCSS?: string;
 }
 
 export class ChartHandler extends BaseSyntaxHandler {
 	private static readonly CHART_CONTAINER_PREFIX = 'sillot-chart-';
-	private loadedLibraries = new Map<string, LoadedLibrary>();
+	static readonly CHART_TYPES = new Set(['echarts', 'chartjs', 'flowchart', 'markmap']);
 
-	// CDN 地址（使用可靠的 CDN）
-	private static readonly CDN_URLS = {
-		mermaid: 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.esm.mjs',
-		echarts: 'https://cdn.jsdelivr.net/npm/echarts@6/dist/echarts.min.js',
-		chartjs: 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.js',
-		flowchart: 'https://cdn.jsdelivr.net/npm/@flowchart-ts/core@3/dist/index.umd.js',
-	};
+	private static extLoadPromise: Promise<ExtLibraries | null> | null = null;
+	private static extLibs: ExtLibraries | null = null;
 
 	processInlineComponents(el: HTMLElement): void {
-		this.processMermaidBlocks(el);
+		console.log('[Sillot:Chart] processInlineComponents 触发, el=', el.className);
 		this.processChartContainers(el);
 	}
 
-	/**
-	 * 处理 Mermaid 代码块
-	 * Obsidian 原生支持 Mermaid，这里主要确保样式一致性和错误处理
-	 */
-	private processMermaidBlocks(el: HTMLElement): void {
-		const mermaidBlocks = el.querySelectorAll<HTMLElement>('pre.language-mermaid');
+	createChartContainer(chartType: string, contentText: string): HTMLElement {
+		console.log('[Sillot:Chart] createChartContainer 被调用, type=', chartType, 'contentLen=', contentText.length);
+		const container = document.createElement('div');
+		container.className = 'sillot-chart-container';
+		container.setAttribute('data-chart-type', chartType);
+		container.setAttribute('data-chart-content', contentText);
 
-		mermaidBlocks.forEach(block => {
-			if (block.classList.contains('sillot-mermaid-processed')) return;
+		const typeLabels: Record<string, string> = {
+			echarts: 'ECharts',
+			chartjs: 'Chart.js',
+			flowchart: 'Flowchart',
+			markmap: 'Markmap',
+		};
 
-			const codeEl = block.querySelector('code');
-			if (!codeEl) return;
-
-			const mermaidCode = codeEl.textContent?.trim();
-			if (!mermaidCode) return;
-
-			// 标记为已处理
-			block.classList.add('sillot-mermaid-processed', 'sillot-chart-enhanced');
-
-			// 添加容器包装以统一样式
-			this.wrapMermaidBlock(block, mermaidCode);
-		});
-	}
-
-	/**
-	 * 包装 Mermaid 代码块以添加统一样式
-	 */
-	private wrapMermaidBlock(block: HTMLElement, code: string): void {
-		const wrapper = document.createElement('div');
-		wrapper.className = 'sillot-mermaid-wrapper';
-		wrapper.setAttribute('data-chart-type', 'mermaid');
-
-		// 创建标题栏
 		const header = document.createElement('div');
 		header.className = 'sillot-chart-header';
 		header.innerHTML = `
-			<span class="sillot-chart-type">Mermaid</span>
+			<span class="sillot-chart-type">${typeLabels[chartType] || chartType}</span>
 			<span class="sillot-chart-actions">
 				<button class="sillot-chart-action-btn" data-action="copy" title="复制代码">📋</button>
 				<button class="sillot-chart-action-btn" data-action="fullscreen" title="全屏查看">⛶</button>
 			</span>
 		`;
+		container.appendChild(header);
 
-		// 将原始 block 移入包装器
-		block.parentNode?.insertBefore(wrapper, block);
-		wrapper.appendChild(header);
-		wrapper.appendChild(block);
+		const canvas = document.createElement('div');
+		canvas.className = 'sillot-chart-canvas';
+		container.appendChild(canvas);
 
-		// 绑定按钮事件
-		this.bindChartActions(wrapper, code);
+		this.bindChartActions(container, contentText);
+		this.renderChart(container, { type: chartType as ChartConfig['type'], rawContent: contentText }).catch(err => {
+			console.error('[Sillot] 图表渲染失败:', err);
+		});
+
+		return container;
 	}
 
-	/**
-	 * 处理自定义图表容器 (::: echarts, ::: chartjs, ::: flowchart)
-	 */
 	private processChartContainers(el: HTMLElement): void {
-		// 查找所有图表容器
 		const chartContainers = el.querySelectorAll<HTMLElement>('.sillot-chart-container');
 
 		chartContainers.forEach(container => {
 			if (container.dataset.rendered === 'true') return;
-
 			const chartType = container.dataset.chartType as ChartConfig['type'];
 			const rawContent = container.dataset.chartContent || '';
-
 			if (!chartType || !rawContent) return;
-
 			this.renderChart(container, { type: chartType, rawContent });
 		});
 	}
 
-	/**
-	 * 渲染图表到指定容器
-	 */
 	async renderChart(container: HTMLElement, config: ChartConfig): Promise<void> {
+		console.log('[Sillot:Chart] renderChart 开始, type=', config.type);
 		const chartId = `${ChartHandler.CHART_CONTAINER_PREFIX}${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 		container.id = chartId;
-
-		// 显示加载状态
 		this.showLoadingState(container, config.type);
 
 		try {
 			switch (config.type) {
-				case 'mermaid':
-					await this.renderMermaid(container, config.rawContent);
-					break;
 				case 'echarts':
 					await this.renderECharts(container, config.rawContent);
 					break;
@@ -127,10 +108,12 @@ export class ChartHandler extends BaseSyntaxHandler {
 				case 'flowchart':
 					await this.renderFlowchart(container, config.rawContent);
 					break;
+				case 'markmap':
+					await this.renderMarkmap(container, config.rawContent);
+					break;
 				default:
 					throw new Error(`不支持的图表类型: ${config.type}`);
 			}
-
 			container.dataset.rendered = 'true';
 			container.classList.add('sillot-chart-rendered');
 		} catch (error) {
@@ -139,93 +122,183 @@ export class ChartHandler extends BaseSyntaxHandler {
 	}
 
 	/**
-	 * 渲染 Mermaid 图表
+	 * 确保侧载依赖已加载（单例模式，全局只加载一次）
+	 * 返回库对象，若加载失败返回 null
 	 */
-	private async renderMermaid(container: HTMLElement, code: string): Promise<void> {
-		// 尝试加载 Mermaid 库
-		const mermaid = await this.loadLibrary('mermaid');
+	private async ensureExtLoaded(): Promise<ExtLibraries | null> {
+		console.log('[Sillot:Chart] ensureExtLoaded 被调用');
+		console.log('[Sillot:Chart] extLibs缓存=', !!ChartHandler.extLibs, 'extLoadPromise=', !!ChartHandler.extLoadPromise);
+		console.log('[Sillot:Chart] settings.extPath=', JSON.stringify(this.plugin.settings?.extPath));
 
-		if (!mermaid) {
-			// 如果无法加载外部库，尝试使用 Obsidian 内置渲染
-			await this.renderWithObsidianMermaid(container, code);
-			return;
+		if (ChartHandler.extLibs) {
+			const valid = this.validateExtLibs(ChartHandler.extLibs);
+			console.log('[Sillot:Chart] → 使用缓存的 extLibs, valid=', valid);
+			if (valid) return ChartHandler.extLibs;
+			console.warn('[Sillot:Chart] 缓存的 extLibs 无效，清除并重新加载');
+			ChartHandler.extLibs = null;
+		}
+		if (ChartHandler.extLoadPromise) {
+			console.log('[Sillot:Chart] → 复用进行中的加载 Promise');
+			return ChartHandler.extLoadPromise;
 		}
 
-		// 使用外部 Mermaid 库渲染
-		const renderId = `mermaid-${Date.now()}`;
+		const extPath = this.plugin.settings?.extPath;
+		if (!extPath) {
+			console.warn('[Sillot] extPath 未配置，图表功能不可用。请在设置中配置「高级依赖侧载」路径，或运行 bun run build:ext 构建');
+			return null;
+		}
 
+		ChartHandler.extLoadPromise = (async () => {
+			try {
+				if (window.SillotExt) {
+					const valid = this.validateExtLibs(window.SillotExt as any);
+					console.log('[Sillot:Chart] window.SillotExt 已存在, valid=', valid, 'keys=', Object.keys(window.SillotExt));
+					if (valid) {
+						ChartHandler.extLibs = window.SillotExt as ExtLibraries;
+						return ChartHandler.extLibs;
+					}
+					console.warn('[Sillot:Chart] window.SillotExt 存在但内容不完整，将重新注入');
+				}
+
+				const relativePath = this.normalizeExtPath(extPath);
+				console.log('[Sillot:Chart] 正在加载侧载包:', relativePath);
+
+				await this.loadScriptInline(relativePath);
+
+				if (!window.SillotExt) {
+					throw new Error('侧载包执行完成但未导出 window.SillotExt，请检查 sillot_pro_ext.js 是否为最新构建产物');
+				}
+
+				const finalValid = this.validateExtLibs(window.SillotExt as any);
+				console.log('[Sillot:Chart] 加载后验证 window.SillotExt, keys=', Object.keys(window.SillotExt), 'valid=', finalValid);
+
+				if (!finalValid) {
+					throw new Error('侧载包已加载但缺少必要导出项。期望: echarts, ChartJS 等。实际: ' + Object.keys(window.SillotExt).join(','));
+				}
+
+				ChartHandler.extLibs = window.SillotExt as ExtLibraries;
+				console.log('[Sillot:Chart] ✅ 高级依赖加载成功:', Object.keys(ChartHandler.extLibs));
+				return ChartHandler.extLibs;
+			} catch (err) {
+				console.error('[Sillot:Chart] ❌ 高级依赖加载失败:', err);
+				return null;
+			} finally {
+				ChartHandler.extLoadPromise = null;
+			}
+		})();
+
+		return ChartHandler.extLoadPromise;
+	}
+
+	private validateExtLibs(libs: any): boolean {
+		if (!libs || typeof libs !== 'object') return false;
+		const required = ['echarts', 'ChartJS'];
+		for (const key of required) {
+			if (!libs[key]) {
+				console.warn(`[Sillot:Chart] validateExtLibs: 缺少 ${key}`);
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private normalizeExtPath(extPath: string): string {
+		let p = extPath.trim();
+		if (p.startsWith('./')) p = p.substring(2);
+		if (p.startsWith('../')) p = p.substring(3);
+		while (p.startsWith('/')) p = p.substring(1);
+		return p;
+	}
+
+	private async loadScriptInline(relativePath: string): Promise<void> {
+		console.log('[Sillot:Chart] loadScriptInline 开始, path=', relativePath);
+
+		let content: string;
 		try {
-			// 初始化 Mermaid（如果尚未初始化）
-			if (!(mermaid as any).isInitialized) {
-				await mermaid.initialize({
-					startOnLoad: false,
-					theme: document.body.classList.contains('theme-dark') ? 'dark' : 'default',
-					securityLevel: 'loose',
-					fontFamily: 'var(--font-text)',
-				});
-				(mermaid as any).isInitialized = true;
+			content = await this.readExtFile(relativePath);
+			console.log('[Sillot:Chart] 文件读取成功, size=', (content.length / 1024).toFixed(1), 'KB');
+		} catch (readErr) {
+			console.error('[Sillot:Chart] ❌ readExtFile 失败:', readErr);
+			throw new Error(`读取侧载包失败 (${relativePath}): ${(readErr as Error).message}`);
+		}
+
+		if (!content || content.length < 100) {
+			throw new Error(`侧载包文件过小或为空 (${content?.length ?? 0} bytes)，请确认已运行 bun run build:ext`);
+		}
+
+		const scriptId = 'sillot-ext-script';
+		const existing = document.getElementById(scriptId);
+		if (existing) {
+			existing.remove();
+			console.log('[Sillot:Chart] 移除旧脚本，重新注入');
+		}
+
+		return new Promise<void>((resolve, reject) => {
+			try {
+				const script = document.createElement('script');
+				script.id = scriptId;
+				script.textContent = content;
+
+				document.head.appendChild(script);
+				console.log('[Sillot:Chart] <script> 已注入 DOM, length=', content.length);
+
+				setTimeout(() => {
+					const keys = window.SillotExt ? Object.keys(window.SillotExt) : [];
+					console.log('[Sillot:Chart] <script> 注入后检查 window.SillotExt=', !!window.SillotExt, 'keys=', keys);
+					resolve();
+				}, 300);
+			} catch (err) {
+				reject(err);
 			}
+		});
+	}
 
-			// 创建 SVG 容器
-			const svgContainer = container.querySelector('.sillot-chart-canvas') || container;
-			svgContainer.innerHTML = '';
+	private async readExtFile(extPath: string): Promise<string> {
+		console.log('[Sillot:Chart] readExtFile 输入路径:', extPath);
 
-			// 渲染 Mermaid
-			const { svg } = await mermaid(renderId, code.trim());
-			svgContainer.innerHTML = svg;
+		const isAbsolutePath = /^[A-Za-z]:\\|^\//.test(extPath);
 
-			// 设置 SVG 样式使其响应式
-			const svgElement = svgContainer.querySelector('svg');
-			if (svgElement) {
-				svgElement.style.maxWidth = '100%';
-				svgElement.style.height = 'auto';
+		if (isAbsolutePath) {
+			return this.readViaNodeFs(extPath);
+		}
+
+		return this.readViaAdapter(extPath);
+	}
+
+	private readViaNodeFs(absolutePath: string): string {
+		try {
+			const fs = require('fs') as { readFileSync: (p: string, e?: string) => Buffer };
+			const buf = fs.readFileSync(absolutePath, 'utf-8');
+			console.log('[Sillot:Chart] readViaNodeFs 成功, path=', absolutePath);
+			return buf.toString();
+		} catch (err: any) {
+			if (err.code === 'ENOENT') {
+				throw new Error(`文件不存在: ${absolutePath}`);
 			}
-		} catch (error) {
-			console.error('[Sillot] Mermaid 渲染失败:', error);
-			throw error;
+			throw new Error(`读取文件失败 (${absolutePath}): ${err.message}`);
 		}
 	}
 
-	/**
-	 * 使用 Obsidian 内置的 Mermaid 渲染（降级方案）
-	 */
-	private async renderWithObsidianMermaid(container: HTMLElement, code: string): Promise<void> {
-		const canvasEl = (container.querySelector('.sillot-chart-canvas') || container) as HTMLElement;
-
+	private async readViaAdapter(relativePath: string): Promise<string> {
+		const adapter = this.plugin.app.vault.adapter;
 		try {
-			// 直接插入 Mermaid 代码让 Obsidian 处理
-			const preEl = document.createElement('pre');
-			preEl.className = 'language-mermaid';
-			const codeEl = document.createElement('code');
-			codeEl.textContent = code;
-			preEl.appendChild(codeEl);
-			canvasEl.innerHTML = '';
-			canvasEl.appendChild(preEl);
-
-			// 触发 Obsidian 的 Markdown 渲染
-			await MarkdownRenderer.render(
-				this.plugin.app,
-				`\`\`\`mermaid\n${code}\n\`\`\``,
-				canvasEl,
-				'', // sourcePath
-				this.plugin
-			);
-		} catch (error) {
-			console.error('[Sillot] Obsidian Mermaid 降级渲染失败:', error);
-			throw error;
+			const content = await adapter.read(relativePath);
+			console.log('[Sillot:Chart] readViaAdapter 成功, path=', relativePath, 'size=', (content.length / 1024).toFixed(1), 'KB');
+			return content;
+		} catch (err: any) {
+			throw new Error(`Vault 内读取失败 (${relativePath}): ${err.message}\n提示：相对路径相对于 Vault 根目录，请确认文件已在 Vault 中`);
 		}
 	}
 
-	/**
-	 * 渲染 ECharts 图表
-	 */
+	/** ====== ECharts 渲染 ====== */
+
 	private async renderECharts(container: HTMLElement, jsonConfig: string): Promise<void> {
-		const echarts = await this.loadLibrary('echarts');
-		if (!echarts) throw new Error('ECharts 库加载失败');
+		const libs = await this.ensureExtLoaded();
+		if (!libs?.echarts) throw new Error('ECharts 库未加载，请检查高级依赖侧载配置');
 
+		const echarts = libs.echarts;
 		const canvasEl = container.querySelector<HTMLDivElement>('.sillot-chart-canvas') || container;
 
-		// 解析配置
 		let options: Record<string, unknown>;
 		try {
 			options = JSON.parse(jsonConfig);
@@ -233,44 +306,34 @@ export class ChartHandler extends BaseSyntaxHandler {
 			throw new Error('ECharts 配置 JSON 格式无效');
 		}
 
-		// 创建 Canvas 容器
 		const chartDom = document.createElement('div');
 		chartDom.style.width = '100%';
-		chartDom.style.height = '400px'; // 默认高度
+		chartDom.style.height = '400px';
 		canvasEl.innerHTML = '';
 		canvasEl.appendChild(chartDom);
 
-		// 初始化图表
 		const chart = echarts.init(chartDom);
-
-		// 应用主题适配
 		const isDark = document.body.classList.contains('theme-dark');
 		if (!options.theme && isDark) {
 			Object.assign(options, { backgroundColor: 'transparent' });
 		}
-
-		// 设置选项并渲染
 		chart.setOption(options);
 
-		// 响应式调整
 		const resizeObserver = new ResizeObserver(() => chart.resize());
 		resizeObserver.observe(canvasEl);
-
-		// 存储实例以便后续销毁
 		(container as any)._chartInstance = chart;
 		(container as any)._resizeObserver = resizeObserver;
 	}
 
-	/**
-	 * 渲染 Chart.js 图表
-	 */
-	private async renderChartJS(container: HTMLElement, jsonConfig: string): Promise<void> {
-		const ChartJS = await this.loadLibrary('chartjs');
-		if (!ChartJS) throw new Error('Chart.js 库加载失败');
+	/** ====== Chart.js 渲染 ====== */
 
+	private async renderChartJS(container: HTMLElement, jsonConfig: string): Promise<void> {
+		const libs = await this.ensureExtLoaded();
+		if (!libs?.ChartJS) throw new Error('Chart.js 库未加载，请检查高级依赖侧载配置');
+
+		const ChartJS = libs.ChartJS;
 		const canvasEl = container.querySelector('.sillot-chart-canvas') || container;
 
-		// 解析配置
 		let config: Record<string, unknown>;
 		try {
 			config = JSON.parse(jsonConfig);
@@ -278,74 +341,61 @@ export class ChartHandler extends BaseSyntaxHandler {
 			throw new Error('Chart.js 配置 JSON 格式无效');
 		}
 
-		// 创建 Canvas 元素
 		const canvas = document.createElement('canvas');
 		canvasEl.innerHTML = '';
 		canvasEl.appendChild(canvas);
 
-		// 初始化图表
-		new ChartJS(canvas.getContext('2d')!, config as any);
-
-		// 存储引用
+		const chartInstance = new ChartJS(canvas.getContext('2d')!, config as any);
+		(canvas as any).__chartjsInstance = chartInstance;
 		(container as any)._chartInstance = canvas;
 	}
 
-	/**
-	 * 渲染 Flowchart.js 图表
-	 */
-	private async renderFlowchart(container: HTMLElement, configStr: string): Promise<void> {
-		const flowchartLib = await this.loadLibrary('flowchart');
-		if (!flowchartLib) throw new Error('Flowchart 库加载失败');
+	/** ====== Flowchart.ts v3 渲染 ====== */
 
+	private async renderFlowchart(container: HTMLElement, configStr: string): Promise<void> {
+		const libs = await this.ensureExtLoaded();
+		if (!libs?.parseFlowchart) throw new Error('Flowchart 库未加载，请检查高级依赖侧载配置');
+
+		const parseFlowchart = libs.parseFlowchart;
 		const canvasEl = container.querySelector('.sillot-chart-canvas') || container;
 
-		// 创建 SVG 容器
-		const svgDiv = document.createElement('div');
-		svgDiv.style.width = '100%';
-		svgDiv.style.height = 'auto';
-		canvasEl.innerHTML = '';
-		canvasEl.appendChild(svgDiv);
-
-		// 解析配置（支持简单文本定义）
 		let definition: string;
 		try {
-			// 尝试解析为 JSON
 			const parsed = JSON.parse(configStr);
 			definition = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
 		} catch {
-			// 作为纯文本处理
 			definition = configStr;
 		}
 
-		// 使用 Flowchart 库渲染
+		const svgDiv = document.createElement('div');
+		svgDiv.style.width = '100%';
+		canvasEl.innerHTML = '';
+		canvasEl.appendChild(svgDiv);
+
+		const textColor = getComputedStyle(document.documentElement)
+			.getPropertyValue('--text-normal').trim() || '#333';
+		const bgColor = getComputedStyle(document.documentElement)
+			.getPropertyValue('--background-secondary').trim() || '#fff';
+
 		try {
-			(flowchartLib as any).parse(definition, (element: any) => {
-				element.drawSVG(svgDiv, {
-					'line-width': 2,
-					'maxWidth': 3,
-					'line-length': 50,
-					'text-margin': 10,
-					'font-size': 14,
-					'font-color': getComputedStyle(document.documentElement)
-						.getPropertyValue('--text-normal').trim() || '#333',
-					'element-color': getComputedStyle(document.documentElement)
-						.getPropertyValue('--background-secondary').trim() || '#fff',
-					'fill': 'white',
-					'yes-text': '是',
-					'no-text': '否',
-					'arrow-end': 'block',
-					'scale': 1,
-					'symbols': {
-						'start': {
-							'font-color': '#008000',
-							'element-color': '#E8F5E9',
-							'fill': '#C8E6C9'
-						},
-						'end': {
-							'class': 'end-element'
-						}
-					}
-				});
+			const chart = parseFlowchart(definition);
+			chart.draw(svgDiv, {
+				'line-width': 2,
+				'maxWidth': 3,
+				'line-length': 50,
+				'text-margin': 10,
+				'font-size': 14,
+				'font-color': textColor,
+				'element-color': bgColor,
+				fill: 'white',
+				'yes-text': '是',
+				'no-text': '否',
+				'arrow-end': 'block',
+				scale: 1,
+				symbols: {
+					start: { 'font-color': '#008000', 'element-color': '#E8F5E9', fill: '#C8E6C9' },
+					end: { class: 'end-element' },
+				},
 			});
 		} catch (error) {
 			console.error('[Sillot] Flowchart 渲染失败:', error);
@@ -353,65 +403,55 @@ export class ChartHandler extends BaseSyntaxHandler {
 		}
 	}
 
-	/**
-	 * 动态加载图表库（带缓存）
-	 */
-	private async loadLibrary(name: keyof typeof ChartHandler.CDN_URLS): Promise<any> {
-		// 检查是否已加载
-		const cached = this.loadedLibraries.get(name);
-		if (cached?.loaded) {
-			return (window as any)[this.getGlobalVarName(name)];
+	/** ====== Markmap 渲染 ====== */
+
+	private async renderMarkmap(container: HTMLElement, markdown: string): Promise<void> {
+		const libs = await this.ensureExtLoaded();
+		if (!libs?.Markmap || !libs?.Transformer) throw new Error('Markmap 库未加载，请检查高级依赖侧载配置');
+
+		const { Markmap, Transformer, globalCSS } = libs;
+		const canvasEl = container.querySelector('.sillot-chart-canvas') || container;
+		canvasEl.innerHTML = '';
+
+		if (!document.getElementById('sillot-markmap-style')) {
+			const styleEl = document.createElement('style');
+			styleEl.id = 'sillot-markmap-style';
+			styleEl.textContent = globalCSS || '';
+			document.head.appendChild(styleEl);
 		}
 
-		// 如果正在加载，等待完成
-		if (cached?.promise) {
-			return cached.promise.then(() => (window as any)[this.getGlobalVarName(name)]);
+		const svgDiv = document.createElement('div');
+		svgDiv.style.width = '100%';
+		svgDiv.style.height = '500px';
+		canvasEl.appendChild(svgDiv);
+
+		try {
+			const transformer = new Transformer([]);
+			const { root } = transformer.transform(markdown.trim());
+
+			const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+			svgEl.setAttribute('width', '100%');
+			svgEl.setAttribute('height', '100%');
+			svgDiv.appendChild(svgEl);
+
+			const mm = Markmap.create(svgEl, {
+				autoFit: true,
+				duration: 300,
+				maxWidth: 300,
+				paddingX: 16,
+				initialExpandLevel: -1,
+			}, root);
+
+			(container as any)._chartInstance = mm;
+			(container as any)._svgContainer = svgDiv;
+		} catch (error) {
+			console.error('[Sillot] Markmap 渲染失败:', error);
+			throw error;
 		}
-
-		// 开始加载
-		const url = ChartHandler.CDN_URLS[name];
-		const loadInfo: LoadedLibrary = { name, loaded: false };
-
-		loadInfo.promise = new Promise<any>((resolve, reject) => {
-			const script = document.createElement('script');
-			script.src = url;
-			script.async = true;
-			script.onload = () => {
-				loadInfo.loaded = true;
-				resolve((window as any)[this.getGlobalVarName(name)]);
-			};
-			script.onerror = () => {
-				const error = new Error(`加载 ${name} 库失败: ${url}`);
-				loadInfo.error = error;
-				reject(error);
-			};
-			document.head.appendChild(script);
-		}).catch(error => {
-			console.warn(`[Sillot] ${name} 加载失败:`, error);
-			return null;
-		});
-
-		this.loadedLibraries.set(name, loadInfo);
-
-		return loadInfo.promise;
 	}
 
-	/**
-	 * 获取全局变量名
-	 */
-	private getGlobalVarName(name: string): string {
-		const names: Record<string, string> = {
-			mermaid: 'mermaid',
-			echarts: 'echarts',
-			chartjs: 'Chart',
-			flowchart: 'flowchart',
-		};
-		return names[name] || name;
-	}
+	/** ====== UI 辅助方法 ====== */
 
-	/**
-	 * 显示加载状态
-	 */
 	private showLoadingState(container: HTMLElement, type: string): void {
 		const canvasEl = container.querySelector('.sillot-chart-canvas');
 		if (canvasEl) {
@@ -424,9 +464,6 @@ export class ChartHandler extends BaseSyntaxHandler {
 		}
 	}
 
-	/**
-	 * 显示错误状态
-	 */
 	private showErrorState(container: HTMLElement, error: Error, type: string): void {
 		const canvasEl = container.querySelector('.sillot-chart-canvas');
 		if (canvasEl) {
@@ -442,9 +479,6 @@ export class ChartHandler extends BaseSyntaxHandler {
 		container.classList.add('sillot-chart-error-state');
 	}
 
-	/**
-	 * 绑定图表操作按钮事件
-	 */
 	private bindChartActions(wrapper: HTMLElement, code: string): void {
 		const buttons = wrapper.querySelectorAll('.sillot-chart-action-btn');
 
@@ -454,7 +488,6 @@ export class ChartHandler extends BaseSyntaxHandler {
 				e.stopPropagation();
 
 				const action = (btn as HTMLElement).dataset.action;
-
 				switch (action) {
 					case 'copy':
 						navigator.clipboard.writeText(code).then(() => {
@@ -469,29 +502,77 @@ export class ChartHandler extends BaseSyntaxHandler {
 		});
 	}
 
-	/**
-	 * 打开全屏模式
-	 */
 	private openFullscreen(element: HTMLElement): void {
-		if (element.requestFullscreen) {
-			element.requestFullscreen();
-		} else if ((element as any).webkitRequestFullscreen) {
-			(element as any).webkitRequestFullscreen();
-		}
+		const chartCanvas = element.querySelector('.sillot-chart-canvas');
+		if (!chartCanvas) return;
 
-		element.classList.add('sillot-chart-fullscreen');
+		const overlay = document.createElement('div');
+		overlay.className = 'sillot-chart-fullscreen-overlay';
 
-		// 监听退出全屏
-		document.addEventListener('fullscreenchange', () => {
-			if (!document.fullscreenElement) {
-				element.classList.remove('sillot-chart-fullscreen');
-			}
-		}, { once: true });
+		const toolbar = document.createElement('div');
+		toolbar.className = 'sillot-chart-fullscreen-toolbar';
+		toolbar.innerHTML = `
+			<span class="sillot-chart-fullscreen-title">${element.querySelector('.sillot-chart-type')?.textContent || 'Chart'}</span>
+			<button class="sillot-chart-fullscreen-close" title="退出全屏 (ESC)">✕</button>
+		`;
+
+		const contentArea = document.createElement('div');
+		contentArea.className = 'sillot-chart-fullscreen-content';
+
+		overlay.appendChild(toolbar);
+		overlay.appendChild(contentArea);
+		document.body.appendChild(overlay);
+
+		const originalParent = chartCanvas.parentNode;
+		contentArea.appendChild(chartCanvas);
+
+		requestAnimationFrame(() => {
+			overlay.classList.add('sillot-chart-fullscreen-active');
+			this.resizeChartInElement(chartCanvas as HTMLElement);
+		});
+
+		const closeFullscreen = () => {
+			overlay.classList.remove('sillot-chart-fullscreen-active');
+			setTimeout(() => {
+				if (originalParent) originalParent.appendChild(chartCanvas);
+				requestAnimationFrame(() => this.resizeChartInElement(chartCanvas as HTMLElement));
+				overlay.remove();
+			}, 200);
+			document.removeEventListener('keydown', escHandler);
+		};
+
+		const escHandler = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') closeFullscreen();
+		};
+		document.addEventListener('keydown', escHandler);
+
+		toolbar.querySelector('.sillot-chart-fullscreen-close')?.addEventListener('click', closeFullscreen);
+		overlay.addEventListener('click', (e) => {
+			if (e.target === overlay) closeFullscreen();
+		});
 	}
 
-	/**
-	 * 显示提示消息
-	 */
+	private resizeChartInElement(el: HTMLElement): void {
+		const echartsDom = el.querySelector('div[_echarts_instance_]');
+		if (echartsDom) {
+			const instanceId = echartsDom.getAttribute('_echarts_instance_');
+			const libs = ChartHandler.extLibs;
+			if (instanceId && libs?.echarts?.getInstanceById) {
+				const instance = libs.echarts.getInstanceById(instanceId);
+				if (instance) requestAnimationFrame(() => instance.resize());
+			}
+		}
+
+		const canvasEl = el.querySelector('canvas');
+		if (canvasEl && (canvasEl as any).__chartjsInstance) {
+			const chart = (canvasEl as any).__chartjsInstance;
+			if (chart?.resize) requestAnimationFrame(() => chart.resize());
+		}
+
+		const mmInstance = (el as any)?.mm;
+		if (mmInstance?.fit) requestAnimationFrame(() => mmInstance.fit());
+	}
+
 	private showToast(message: string): void {
 		const toast = document.createElement('div');
 		toast.className = 'sillot-toast';
@@ -504,24 +585,15 @@ export class ChartHandler extends BaseSyntaxHandler {
 		}, 2000);
 	}
 
-	/**
-	 * 清理资源（在组件卸载时调用）
-	 */
 	dispose(): void {
-		// 销毁所有图表实例
 		document.querySelectorAll('.sillot-chart-rendered').forEach(container => {
 			if ((container as any)._chartInstance) {
 				(container as any)._chartInstance.destroy?.();
-			}
-			if ((container as any)._chartInstance) {
 				(container as any)._chartInstance.dispose?.();
 			}
 			if ((container as any)._resizeObserver) {
 				(container as any)._resizeObserver.disconnect?.();
 			}
 		});
-
-		// 清除缓存的库引用
-		this.loadedLibraries.clear();
 	}
 }

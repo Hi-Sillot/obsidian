@@ -3,8 +3,7 @@
    ============================================ */
 
 /* 基础图表容器 */
-.sillot-chart-container,
-.sillot-mermaid-wrapper {
+.sillot-chart-container {
 	position: relative;
 	margin: 16px 0;
 	border: 1px solid var(--background-modifier-border);
@@ -38,11 +37,6 @@
 .sillot-chart-type::before {
 	content: '📊';
 	font-size: 14px;
-}
-
-/* Mermaid 特殊标识 */
-.sillot-mermaid-wrapper .sillot-chart-type::before {
-	content: '🔀';
 }
 
 /* 操作按钮 */
@@ -82,29 +76,6 @@
 	min-height: 200px;
 	padding: 16px;
 	overflow: auto;
-}
-
-/* Mermaid 包装器特殊样式 */
-.sillot-mermaid-wrapper pre.language-mermaid {
-	margin: 0 !important;
-	background: transparent !important;
-	border: none !important;
-	padding: 12px !important;
-	border-radius: 0 !important;
-}
-
-.sillot-mermaid-wrapper pre.language-mermaid code {
-	font-family: var(--font-monospace) !important;
-	font-size: 13px !important;
-	line-height: 1.6 !important;
-}
-
-/* Mermaid SVG 样式 */
-.sillot-mermaid-wrapper svg {
-	max-width: 100% !important;
-	height: auto !important;
-	display: block;
-	margin: 0 auto;
 }
 
 /* 加载状态 */
@@ -174,26 +145,87 @@
 	border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
-/* 全屏模式 */
-.sillot-chart-fullscreen {
-	position: fixed !important;
-	top: 0 !important;
-	left: 0 !important;
-	right: 0 !important;
-	bottom: 0 !important;
-	z-index: 1000 !important;
-	margin: 0 !important;
-	border-radius: 0 !important;
-	max-width: none !important;
-	max-height: none !important;
-	width: 100vw !important;
-	height: 100vh !important;
-	background: var(--background-primary) !important;
+/* 全屏浮层模式 */
+.sillot-chart-fullscreen-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 10000;
+	background: var(--background-primary);
+	display: flex;
+	flex-direction: column;
+	opacity: 0;
+	transition: opacity 0.2s ease;
+	pointer-events: none;
 }
 
-.sillot-chart-fullscreen .sillot-chart-canvas {
-	height: calc(100vh - 50px) !important;
+.sillot-chart-fullscreen-overlay.sillot-chart-fullscreen-active {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.sillot-chart-fullscreen-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 20px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	flex-shrink: 0;
+}
+
+.sillot-chart-fullscreen-title {
+	font-weight: 600;
+	font-size: 14px;
+	color: var(--text-normal);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.sillot-chart-fullscreen-close {
+	width: 32px;
+	height: 32px;
+	border-radius: 6px;
+	border: none;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	font-size: 16px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: opacity 0.15s, transform 0.15s;
+}
+
+.sillot-chart-fullscreen-close:hover {
+	opacity: 0.85;
+	transform: scale(1.05);
+}
+
+.sillot-chart-fullscreen-content {
+	flex: 1;
 	overflow: auto;
+	padding: 20px;
+	display: flex;
+	align-items: stretch;
+	justify-content: center;
+	min-height: 0;
+}
+
+.sillot-chart-fullscreen-content .sillot-chart-canvas {
+	width: 100%;
+	flex: 1;
+	min-height: 0;
+}
+
+/* 全屏模式下强制图表容器铺满 */
+.sillot-chart-fullscreen-overlay .sillot-chart-canvas > div,
+.sillot-chart-fullscreen-overlay .sillot-chart-canvas > svg {
+	width: 100% !important;
+	height: 100% !important;
+	max-height: none !important;
 }
 
 /* Toast 提示 */
@@ -227,8 +259,7 @@
 }
 
 /* 深色主题适配 */
-.theme-dark .sillot-chart-container,
-.theme-dark .sillot-mermaid-wrapper {
+.theme-dark .sillot-chart-container {
 	border-color: rgba(255, 255, 255, 0.1);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
@@ -250,8 +281,7 @@
 
 /* 响应式适配 */
 @media (max-width: 768px) {
-	.sillot-chart-container,
-	.sillot-mermaid-wrapper {
+	.sillot-chart-container {
 		margin: 12px 0;
 		border-radius: 6px;
 	}
@@ -296,8 +326,7 @@
 		display: none;
 	}
 
-	.sillot-chart-container,
-	.sillot-mermaid-wrapper {
+	.sillot-chart-container {
 		break-inside: avoid;
 		page-break-inside: avoid;
 		border: 1px solid #ccc;

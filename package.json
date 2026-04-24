@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"build:ext": "node build-ext.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
@@ -33,10 +34,17 @@
 	},
 	"dependencies": {
 		"@vueuse/core": "^14.2.1",
+		"chart.js": "^4.5.1",
 		"d3-force": "^3.0.0",
 		"d3-selection": "^3.0.0",
 		"d3-zoom": "^3.0.0",
+		"echarts": "^6.0.0",
+		"flowchart.ts": "^3.0.1",
 		"jszip": "^3.10.1",
+		"markmap-lib": "^0.18.12",
+		"markmap-toolbar": "^0.18.12",
+		"markmap-view": "^0.18.12",
+		"mermaid": "^11.14.0",
 		"turndown": "^7.2.4"
 	}
 }
