@@ -195,8 +195,9 @@ export class SyntaxRegistry {
 		const hasCedossContainer = /^:{3,}\s*cedoss\b/m.test(text);
 		const hasAudioReader = /@\[audioReader/.test(text);
 		const hasQRCode = /@\[qrcode/.test(text);
+		const hasAbbreviation = /^\*\[[^\]]+\]:\s/m.test(text);
 
-		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader || hasQRCode) {
+		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader || hasQRCode || hasAbbreviation) {
 			let preprocessed = this.inlineComponentHandler.preprocessMarkdown!(text);
 			preprocessed = this.inlineComponentHandler.preprocessCedossContainerMarkdown(preprocessed);
 			preprocessed = this.videoHandler.preprocessMarkdown!(preprocessed);

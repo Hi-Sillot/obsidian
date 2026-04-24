@@ -2981,4 +2981,19 @@
 	border: 1px solid rgba(var(--text-error-rgb), 0.2);
 }
 
+/* Abbreviation - 缩写词 */
+.sillot-abbr {
+	border-bottom: 1px dotted var(--interactive-accent);
+	cursor: help;
+	text-decoration: none;
+	position: relative;
+	transition: all 0.2s ease;
+}
+
+.sillot-abbr:hover {
+	border-bottom-style: solid;
+	border-bottom-color: var(--interactive-accent-hover, var(--interactive-accent));
+	color: var(--interactive-accent-hover, var(--text-normal));
+}
+
 /* Image Enhancement - Figure */
