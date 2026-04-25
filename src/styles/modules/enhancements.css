@@ -709,7 +709,133 @@
 }
 
 /* ============================================
-   Code Block Enhancement - 代码块增强
+   Card Container - 卡片容器
+   Plume ::: card / :::: card-grid 对等渲染
+   ============================================ */
+
+.vp-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 16px 20px;
+	background: var(--background-secondary);
+	transition: box-shadow 0.25s ease, border-color 0.25s ease;
+	margin: 12px 0;
+}
+
+.vp-card:hover {
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+	border-color: var(--interactive-accent-hover);
+}
+
+.theme-dark .vp-card:hover {
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.vp-card-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.vp-card-header:empty {
+	display: none;
+}
+
+.vp-card-icon {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.4em;
+	height: 1.4em;
+	font-size: 1.2em;
+	line-height: 1;
+}
+
+.vp-card-icon-img {
+	width: 1.2em;
+	height: 1.2em;
+	object-fit: contain;
+	border-radius: 2px;
+}
+
+.vp-card-icon-svg {
+	display: block;
+	color: var(--text-normal);
+}
+
+.vp-card-icon-text {
+	font-size: 1em;
+	line-height: 1;
+}
+
+.vp-card-icon-fallback {
+	font-size: 1em;
+	line-height: 1;
+}
+
+.vp-card-title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--text-normal);
+	line-height: 1.4;
+}
+
+.vp-card-content {
+	font-size: 14px;
+	line-height: 1.6;
+	color: var(--text-normal);
+}
+
+.vp-card-content > *:first-child {
+	margin-top: 0;
+}
+
+.vp-card-content > *:last-child {
+	margin-bottom: 0;
+}
+
+/* Card Grid */
+.vp-card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: 16px;
+	margin: 12px 0;
+}
+
+.vp-card-grid > .vp-card {
+	margin: 0;
+}
+
+.vp-card-grid-fallback {
+	padding: 12px;
+	color: var(--text-muted);
+	font-size: 13px;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+	.vp-card-grid {
+		grid-template-columns: 1fr;
+		gap: 12px;
+	}
+
+	.vp-card {
+		padding: 12px 16px;
+	}
+
+	.vp-card-title {
+		font-size: 15px;
+	}
+
+	.vp-card-content {
+		font-size: 13px;
+	}
+}
+
+/*   Code Block Enhancement - 代码块增强
    ============================================ */
 
 /* 基础增强标识 */

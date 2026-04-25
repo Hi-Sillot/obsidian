@@ -13,6 +13,7 @@ import { InlineSyntaxHandler } from './handlers/InlineSyntaxHandler';
 import { ExperienceEnhanceHandler } from './handlers/ExperienceEnhanceHandler';
 import { TTSHandler } from './handlers/TTSHandler';
 import { AudioReaderHandler } from './handlers/AudioReaderHandler';
+import { CardHandler } from './handlers/CardHandler';
 
 const TAG = 'Syntax';
 
@@ -44,6 +45,7 @@ export class SyntaxRegistry {
 	private experienceEnhanceHandler: ExperienceEnhanceHandler;
 	private ttsHandler: TTSHandler;
 	private audioReaderHandler: AudioReaderHandler;
+	private cardHandler: CardHandler;
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -59,6 +61,7 @@ export class SyntaxRegistry {
 		this.experienceEnhanceHandler = new ExperienceEnhanceHandler(plugin);
 		this.ttsHandler = new TTSHandler(plugin);
 		this.audioReaderHandler = new AudioReaderHandler(plugin);
+		this.cardHandler = new CardHandler(plugin);
 	}
 
 	loadInlineComponents(data: InlineComponentData) {
@@ -89,6 +92,11 @@ export class SyntaxRegistry {
 	private async processSection(el: HTMLElement, ctx: MarkdownPostProcessorContext) {
 		const sourcePath = ctx.sourcePath;
 		const text = this.getSectionRawMarkdown(el, ctx);
+
+		if (this.isInsideCodeBlock(el, ctx)) {
+			this.plugin.logger?.debug(TAG, `skip section inside codeBlock: el=${el.tagName}, text="${text.substring(0, 60)}"`);
+			return;
+		}
 
 		let pending: PendingContainer | undefined;
 		for (const [k, v] of this.pendingContainers) {
@@ -140,7 +148,7 @@ export class SyntaxRegistry {
 				return;
 			}
 
-			if (firstColons >= 3 && firstColons <= pending.colons) {
+			if (firstColons >= 3 && firstColons === pending.colons) {
 				await this.finalizeContainer(ctx, pending);
 				await this.processSection(el, ctx);
 				return;
@@ -255,6 +263,8 @@ export class SyntaxRegistry {
 			container = await this.tabsHandler.buildContainerWithGroupId(containerType, title, tabGroupId, contentText, ctx);
 		} else if (ChartHandler.CHART_TYPES.has(containerType)) {
 			container = this.chartHandler.createChartContainer(containerType, contentText);
+		} else if (CardHandler.CARD_TYPES.has(containerType)) {
+			container = await this.cardHandler.buildContainer(containerType, title, contentText, ctx);
 		} else if (containerType === 'cedoss') {
 			container = await this.createCedossContainerFromText(contentText, ctx);
 		} else {
@@ -331,5 +341,30 @@ export class SyntaxRegistry {
 			return rawLines.join('\n').trim();
 		}
 		return el.textContent?.trim() || '';
+	}
+
+	private isInsideCodeBlock(el: HTMLElement, ctx: MarkdownPostProcessorContext): boolean {
+		if (el.tagName === 'PRE' || el.tagName === 'CODE') {
+			return true;
+		}
+		if (el.closest('pre') || el.closest('code')) {
+			return true;
+		}
+
+		const sectionInfo = ctx.getSectionInfo(el);
+		if (sectionInfo) {
+			const lines = sectionInfo.text.split('\n');
+			let fenceCount = 0;
+			for (let i = 0; i < sectionInfo.lineStart; i++) {
+				if (/^```/.test(lines[i].trim())) {
+					fenceCount++;
+				}
+			}
+			if (fenceCount % 2 === 1) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }
