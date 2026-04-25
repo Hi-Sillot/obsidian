@@ -14,6 +14,7 @@ import { ExperienceEnhanceHandler } from './handlers/ExperienceEnhanceHandler';
 import { TTSHandler } from './handlers/TTSHandler';
 import { AudioReaderHandler } from './handlers/AudioReaderHandler';
 import { CardHandler } from './handlers/CardHandler';
+import { FileTreeHandler } from './handlers/FileTreeHandler';
 
 const TAG = 'Syntax';
 
@@ -46,6 +47,7 @@ export class SyntaxRegistry {
 	private ttsHandler: TTSHandler;
 	private audioReaderHandler: AudioReaderHandler;
 	private cardHandler: CardHandler;
+	private fileTreeHandler: FileTreeHandler;
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -62,6 +64,7 @@ export class SyntaxRegistry {
 		this.ttsHandler = new TTSHandler(plugin);
 		this.audioReaderHandler = new AudioReaderHandler(plugin);
 		this.cardHandler = new CardHandler(plugin);
+		this.fileTreeHandler = new FileTreeHandler(plugin);
 	}
 
 	loadInlineComponents(data: InlineComponentData) {
@@ -265,6 +268,8 @@ export class SyntaxRegistry {
 			container = this.chartHandler.createChartContainer(containerType, contentText);
 		} else if (CardHandler.CARD_TYPES.has(containerType)) {
 			container = await this.cardHandler.buildContainer(containerType, title, contentText, ctx);
+		} else if (containerType === 'file-tree') {
+			container = await this.fileTreeHandler.buildContainer(containerType, title, contentText, ctx);
 		} else if (containerType === 'cedoss') {
 			container = await this.createCedossContainerFromText(contentText, ctx);
 		} else {
