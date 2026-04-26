@@ -388,9 +388,9 @@ export default class VuePressPublisherPlugin extends Plugin {
 			this.logger.debug('DocumentTreeService', '未配置 GitHub，跳过初始化');
 			return;
 		}
-		const githubApi = new GitHubApi(this.settings.githubRepo, this.settings.githubToken);
+		const githubApi = new GitHubApi(this.settings.githubRepo, this.settings.githubToken, this.logger);
 		const pathMapper = new PathMapper({ docsDir: this.settings.vuepressDocsDir, publishRootPath: this.settings.publishRootPath });
-		this.documentTreeService = new DocumentTreeService(this.app.vault, githubApi, pathMapper);
+		this.documentTreeService = new DocumentTreeService(this.app.vault, githubApi, pathMapper, this.logger);
 		this.logger.info('DocumentTreeService', '已初始化');
 	}
 

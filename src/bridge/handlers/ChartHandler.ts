@@ -38,10 +38,12 @@ export class ChartHandler extends BaseSyntaxHandler {
 	private static extLibs: ExtLibraries | null = null;
 
 	processInlineComponents(el: HTMLElement): void {
+		// this.plugin.logger?.debug('Chart', 'processInlineComponents 触发', `el.className=${el.className}`); // 容易卡死，慎用
 		this.processChartContainers(el);
 	}
 
 	createChartContainer(chartType: string, contentText: string): HTMLElement {
+		this.plugin.logger?.debug('Chart', 'createChartContainer 被调用', `type=${chartType}, contentLen=${contentText.length}`);
 		const container = document.createElement('div');
 		container.className = 'sillot-chart-container';
 		container.setAttribute('data-chart-type', chartType);
@@ -71,7 +73,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 
 		this.bindChartActions(container, contentText);
 		this.renderChart(container, { type: chartType as ChartConfig['type'], rawContent: contentText }).catch(err => {
-			this.plugin.logger?.warn('Chart', '图表渲染失败:', err);
+			this.plugin.logger?.error('Chart', '图表渲染失败', (err as Error).message);
 		});
 
 		return container;
@@ -90,6 +92,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 	}
 
 	async renderChart(container: HTMLElement, config: ChartConfig): Promise<void> {
+		this.plugin.logger?.debug('Chart', 'renderChart 开始', `type=${config.type}`);
 		const chartId = `${ChartHandler.CHART_CONTAINER_PREFIX}${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 		container.id = chartId;
 		this.showLoadingState(container, config.type);
@@ -123,19 +126,25 @@ export class ChartHandler extends BaseSyntaxHandler {
 	 * 返回库对象，若加载失败返回 null
 	 */
 	private async ensureExtLoaded(): Promise<ExtLibraries | null> {
+		this.plugin.logger?.debug('Chart', 'ensureExtLoaded 被调用');
+		this.plugin.logger?.debug('Chart', '依赖加载状态', `extLibs缓存=${!!ChartHandler.extLibs}, extLoadPromise=${!!ChartHandler.extLoadPromise}`);
+		this.plugin.logger?.debug('Chart', '配置检查', `settings.extPath=${JSON.stringify(this.plugin.settings?.extPath)}`);
+
 		if (ChartHandler.extLibs) {
 			const valid = this.validateExtLibs(ChartHandler.extLibs);
+			this.plugin.logger?.debug('Chart', '使用缓存的 extLibs', `valid=${valid}`);
 			if (valid) return ChartHandler.extLibs;
-			this.plugin.logger?.warn('Chart', '缓存的 extLibs 无效，重新加载');
+			this.plugin.logger?.warn('Chart', '缓存的 extLibs 无效，清除并重新加载');
 			ChartHandler.extLibs = null;
 		}
 		if (ChartHandler.extLoadPromise) {
+			this.plugin.logger?.debug('Chart', '复用进行中的加载 Promise');
 			return ChartHandler.extLoadPromise;
 		}
 
 		const extPath = this.plugin.settings?.extPath;
 		if (!extPath) {
-			this.plugin.logger?.warn('Chart', 'extPath 未配置，图表功能不可用');
+			this.plugin.logger?.warn('Chart', 'extPath 未配置，图表功能不可用', '请在设置中配置「高级依赖侧载」路径，或运行 bun run build:ext 构建');
 			return null;
 		}
 
@@ -143,29 +152,35 @@ export class ChartHandler extends BaseSyntaxHandler {
 			try {
 				if (window.SillotExt) {
 					const valid = this.validateExtLibs(window.SillotExt as any);
+					this.plugin.logger?.debug('Chart', 'window.SillotExt 已存在', `valid=${valid}, keys=${Object.keys(window.SillotExt).join(',')}`);
 					if (valid) {
 						ChartHandler.extLibs = window.SillotExt as ExtLibraries;
 						return ChartHandler.extLibs;
 					}
+					this.plugin.logger?.warn('Chart', 'window.SillotExt 存在但内容不完整，将重新注入');
 				}
 
 				const relativePath = this.normalizeExtPath(extPath);
+				this.plugin.logger?.info('Chart', '正在加载侧载包', relativePath);
+
 				await this.loadScriptInline(relativePath);
 
 				if (!window.SillotExt) {
-					throw new Error('侧载包执行完成但未导出 window.SillotExt');
+					throw new Error('侧载包执行完成但未导出 window.SillotExt，请检查 sillot_pro_ext.js 是否为最新构建产物');
 				}
 
 				const finalValid = this.validateExtLibs(window.SillotExt as any);
+				this.plugin.logger?.debug('Chart', '加载后验证 window.SillotExt', `keys=${Object.keys(window.SillotExt).join(',')}, valid=${finalValid}`);
+
 				if (!finalValid) {
-					throw new Error('侧载包已加载但缺少必要导出项');
+					throw new Error('侧载包已加载但缺少必要导出项。期望: echarts, ChartJS 等。实际: ' + Object.keys(window.SillotExt).join(','));
 				}
 
 				ChartHandler.extLibs = window.SillotExt as ExtLibraries;
-				this.plugin.logger?.debug('Chart', '高级依赖加载成功');
+				this.plugin.logger?.info('Chart', '高级依赖加载成功', Object.keys(ChartHandler.extLibs).join(', '));
 				return ChartHandler.extLibs;
 			} catch (err) {
-				this.plugin.logger?.warn('Chart', '高级依赖加载失败:', err);
+				this.plugin.logger?.error('Chart', '高级依赖加载失败', (err as Error).message);
 				return null;
 			} finally {
 				ChartHandler.extLoadPromise = null;
@@ -179,7 +194,10 @@ export class ChartHandler extends BaseSyntaxHandler {
 		if (!libs || typeof libs !== 'object') return false;
 		const required = ['echarts', 'ChartJS'];
 		for (const key of required) {
-			if (!libs[key]) return false;
+			if (!libs[key]) {
+				this.plugin.logger?.warn('Chart', 'validateExtLibs: 缺少必要库', `missing=${key}`);
+				return false;
+			}
 		}
 		return true;
 	}
@@ -193,21 +211,26 @@ export class ChartHandler extends BaseSyntaxHandler {
 	}
 
 	private async loadScriptInline(relativePath: string): Promise<void> {
+		this.plugin.logger?.debug('Chart', 'loadScriptInline 开始', `path=${relativePath}`);
+
 		let content: string;
 		try {
 			content = await this.readExtFile(relativePath);
+			this.plugin.logger?.debug('Chart', '文件读取成功', `size=${(content.length / 1024).toFixed(1)}KB`);
 		} catch (readErr) {
+			this.plugin.logger?.error('Chart', 'readExtFile 失败', (readErr as Error).message);
 			throw new Error(`读取侧载包失败 (${relativePath}): ${(readErr as Error).message}`);
 		}
 
 		if (!content || content.length < 100) {
-			throw new Error(`侧载包文件过小或为空 (${content?.length ?? 0} bytes)`);
+			throw new Error(`侧载包文件过小或为空 (${content?.length ?? 0} bytes)，请确认已运行 bun run build:ext`);
 		}
 
 		const scriptId = 'sillot-ext-script';
 		const existing = document.getElementById(scriptId);
 		if (existing) {
 			existing.remove();
+			this.plugin.logger?.debug('Chart', '移除旧脚本，重新注入');
 		}
 
 		return new Promise<void>((resolve, reject) => {
@@ -215,9 +238,13 @@ export class ChartHandler extends BaseSyntaxHandler {
 				const script = document.createElement('script');
 				script.id = scriptId;
 				script.textContent = content;
+
 				document.head.appendChild(script);
+				this.plugin.logger?.debug('Chart', 'script 已注入 DOM', `length=${content.length}`);
 
 				setTimeout(() => {
+					const keys = window.SillotExt ? Object.keys(window.SillotExt) : [];
+					this.plugin.logger?.debug('Chart', 'script 注入后检查', `window.SillotExt=${!!window.SillotExt}, keys=${keys.join(',')}`);
 					resolve();
 				}, 300);
 			} catch (err) {
@@ -227,17 +254,23 @@ export class ChartHandler extends BaseSyntaxHandler {
 	}
 
 	private async readExtFile(extPath: string): Promise<string> {
+		this.plugin.logger?.debug('Chart', 'readExtFile 输入路径', extPath);
+
 		const isAbsolutePath = /^[A-Za-z]:\\|^\//.test(extPath);
+
 		if (isAbsolutePath) {
 			return this.readViaNodeFs(extPath);
 		}
+
 		return this.readViaAdapter(extPath);
 	}
 
 	private readViaNodeFs(absolutePath: string): string {
 		try {
 			const fs = require('fs') as { readFileSync: (p: string, e?: string) => Buffer };
-			return fs.readFileSync(absolutePath, 'utf-8').toString();
+			const buf = fs.readFileSync(absolutePath, 'utf-8');
+			this.plugin.logger?.debug('Chart', 'readViaNodeFs 成功', `path=${absolutePath}`);
+			return buf.toString();
 		} catch (err: any) {
 			if (err.code === 'ENOENT') {
 				throw new Error(`文件不存在: ${absolutePath}`);
@@ -249,9 +282,11 @@ export class ChartHandler extends BaseSyntaxHandler {
 	private async readViaAdapter(relativePath: string): Promise<string> {
 		const adapter = this.plugin.app.vault.adapter;
 		try {
-			return await adapter.read(relativePath);
+			const content = await adapter.read(relativePath);
+			this.plugin.logger?.debug('Chart', 'readViaAdapter 成功', `path=${relativePath}, size=${(content.length / 1024).toFixed(1)}KB`);
+			return content;
 		} catch (err: any) {
-			throw new Error(`Vault 内读取失败 (${relativePath}): ${err.message}`);
+			throw new Error(`Vault 内读取失败 (${relativePath}): ${err.message}\n提示：相对路径相对于 Vault 根目录，请确认文件已在 Vault 中`);
 		}
 	}
 
@@ -363,7 +398,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 				},
 			});
 		} catch (error) {
-			this.plugin.logger?.warn('Chart', 'Flowchart 渲染失败:', error);
+			this.plugin.logger?.error('Chart', 'Flowchart 渲染失败', (error as Error).message);
 			throw error;
 		}
 	}
@@ -410,7 +445,7 @@ export class ChartHandler extends BaseSyntaxHandler {
 			(container as any)._chartInstance = mm;
 			(container as any)._svgContainer = svgDiv;
 		} catch (error) {
-			this.plugin.logger?.warn('Chart', 'Markmap 渲染失败:', error);
+			this.plugin.logger?.error('Chart', 'Markmap 渲染失败', (error as Error).message);
 			throw error;
 		}
 	}

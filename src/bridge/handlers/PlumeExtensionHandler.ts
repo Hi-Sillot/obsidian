@@ -411,7 +411,7 @@ export class PlumeExtensionHandler extends BaseSyntaxHandler {
 	private convertFootnotePlaceholders(el: HTMLElement): void {
 		const sourcePath = this.getSourcePath(el);
 		const defMap = PlumeExtensionHandler.getFootnoteDefs(sourcePath);
-		console.log('[VP-FN] convertFootnotePlaceholders:', { sourcePath, defMapSize: defMap.size });
+		this.plugin.logger?.debug('Plume', 'convertFootnotePlaceholders', `sourcePath=${sourcePath}, defMapSize=${defMap.size}`);
 
 		const refOrder: string[] = [];
 		const idToNumber = new Map<string, number>();

@@ -797,7 +797,7 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 				verified: a.verified,
 			})));
 		} catch (e) {
-			console.error('加载作者列表失败', e);
+			this.plugin.logger?.error('DocSyncPanel', '加载作者列表失败', (e as Error).message);
 			return Promise.resolve([]);
 		}
 	}

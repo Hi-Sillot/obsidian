@@ -1,5 +1,6 @@
 import { Vault, TFile, requestUrl } from 'obsidian';
 import { GitHubApi } from './githubApi';
+import type { Logger } from '../utils/Logger';
 
 export interface AssetReference {
 	originalPath: string; // Markdown 中的原始路径（如 ./Develocity.webp）
@@ -39,13 +40,15 @@ export class AssetSyncService {
 	private vault: Vault;
 	private githubApi: GitHubApi;
 	private docsDir: string;
+	private logger: Logger | null;
 	private md5Cache: MD5Cache = {};
 	private cacheFilePath = '.sillot/asset-md5-cache.json';
 
-	constructor(vault: Vault, githubApi: GitHubApi, docsDir: string = 'docs') {
+	constructor(vault: Vault, githubApi: GitHubApi, docsDir: string = 'docs', logger?: Logger) {
 		this.vault = vault;
 		this.githubApi = githubApi;
 		this.docsDir = docsDir;
+		this.logger = logger || null;
 	}
 
 	async loadMD5Cache(): Promise<void> {
@@ -54,10 +57,10 @@ export class AssetSyncService {
 			if (cacheFile instanceof TFile) {
 				const content = await this.vault.read(cacheFile);
 				this.md5Cache = JSON.parse(content);
-				console.log('[AssetSync] Loaded MD5 cache:', Object.keys(this.md5Cache).length, 'entries');
+				this.logger?.debug('AssetSync', 'Loaded MD5 cache', `${Object.keys(this.md5Cache).length} entries`);
 			}
 		} catch (error) {
-			console.warn('[AssetSync] Failed to load MD5 cache:', error);
+			this.logger?.warn('AssetSync', 'Failed to load MD5 cache', (error as Error).message);
 			this.md5Cache = {};
 		}
 	}
@@ -73,9 +76,9 @@ export class AssetSyncService {
 			} else {
 				await this.vault.create(this.cacheFilePath, content);
 			}
-			console.log('[AssetSync] Saved MD5 cache');
+			this.logger?.debug('AssetSync', 'Saved MD5 cache');
 		} catch (error) {
-			console.error('[AssetSync] Failed to save MD5 cache:', error);
+			this.logger?.error('AssetSync', 'Failed to save MD5 cache', (error as Error).message);
 		}
 	}
 
@@ -178,11 +181,11 @@ export class AssetSyncService {
 		documentLocalPath: string,
 		branch?: string
 	): Promise<AssetSyncResult> {
-		console.log(`[AssetSync] Starting sync for document: ${documentCloudPath}`);
+		this.logger?.debug('AssetSync', 'Starting sync for document', documentCloudPath);
 
 		// 1. 解析图片链接
 		const assetRefs = this.parseImageLinks(markdownContent);
-		console.log(`[AssetSync] Found ${assetRefs.length} image references`);
+		this.logger?.debug('AssetSync', 'Found image references', `${assetRefs.length} references`);
 
 		if (assetRefs.length === 0) {
 			return { success: true, totalAssets: 0, syncedAssets: 0, failedAssets: [], assets: [] };
@@ -204,14 +207,14 @@ export class AssetSyncService {
 				const result = await this.downloadAndSaveAsset(ref.resolvedPath, localPath, branch);
 				if (result) {
 					syncedAssets.push(result);
-					console.log(`[AssetSync] ✓ Synced: ${ref.originalPath} → ${localPath}`);
+					this.logger?.debug('AssetSync', 'Synced', `${ref.originalPath} → ${localPath}`);
 				} else {
 					failedAssets.push(ref.originalPath);
-					console.warn(`[AssetSync] ✗ Failed: ${ref.originalPath}`);
+					this.logger?.warn('AssetSync', 'Failed', ref.originalPath);
 				}
 			} catch (error) {
 				failedAssets.push(ref.originalPath);
-				console.error(`[AssetSync] Error syncing ${ref.originalPath}:`, error);
+				this.logger?.error('AssetSync', `Error syncing ${ref.originalPath}`, (error as Error).message);
 			}
 		}
 
@@ -235,7 +238,7 @@ export class AssetSyncService {
 		// 从 GitHub API 下载二进制文件
 		const arrayBuffer = await this.githubApi.getFileBinary(remotePath, branch);
 		if (!arrayBuffer) {
-			console.error(`[AssetSync] Failed to download: ${remotePath}`);
+			this.logger?.error('AssetSync', 'Failed to download', remotePath);
 			return null;
 		}
 
@@ -245,7 +248,7 @@ export class AssetSyncService {
 		// 检查是否需要更新（比较缓存中的 MD5）
 		const cached = this.md5Cache[remotePath];
 		if (cached && cached.md5 === md5) {
-			console.log(`[AssetSync] Asset unchanged (MD5 match): ${remotePath}`);
+			this.logger?.debug('AssetSync', 'Asset unchanged (MD5 match)', remotePath);
 			// 即使没有变化，也返回信息，但标记为已同步
 			return {
 				localPath,
@@ -287,7 +290,7 @@ export class AssetSyncService {
 				size: arrayBuffer.byteLength,
 			};
 		} catch (error) {
-			console.error(`[AssetSync] Failed to save file ${localPath}:`, error);
+			this.logger?.error('AssetSync', `Failed to save file ${localPath}`, (error as Error).message);
 			return null;
 		}
 	}
@@ -303,7 +306,7 @@ export class AssetSyncService {
 			return `sha256-${hashHex}`;
 		} catch (error) {
 			// 回退：使用简单的长度+时间戳作为标识
-			console.warn('[AssetSync] SHA-256 calculation failed, using fallback:', error);
+			this.logger?.warn('AssetSync', 'SHA-256 calculation failed, using fallback', (error as Error).message);
 			return `fallback-${arrayBuffer.byteLength}-${Date.now()}`;
 		}
 	}

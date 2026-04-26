@@ -47,6 +47,10 @@ export class DevPanelView extends ItemView {
 	private vaultPagination: PaginationBar;
 	private pathMapPagination: PaginationBar;
 	private publishStatusPagination: PaginationBar;
+	private cachedLogContent: string | null = null;
+	private cachedLogLines: string[] = [];
+	private logPath = '.obsidian/plugins/sillot/log/sillot.log';
+	private maxLogDisplayLines = 500;
 
 	constructor(leaf: WorkspaceLeaf, plugin: VuePressPublisherPlugin) {
 		super(leaf);
@@ -1544,20 +1548,22 @@ export class DevPanelView extends ItemView {
 		const card = container.createDiv({ cls: 'sillot-dev-card' });
 		card.createEl('h5', { text: '插件日志文件' });
 
-		const logPath = this.plugin.settings.logFilePath || '.obsidian/plugins/sillot/log/sillot.log';
+		this.logPath = this.plugin.settings.logFilePath || '.obsidian/plugins/sillot/log/sillot.log';
 		const actions = card.createDiv({ cls: 'sillot-dev-actions' });
 
 		actions.createEl('button', { text: '🔄 刷新', cls: 'sillot-dev-btn' }).onclick = () => {
-			this.render();
+			this.cachedLogContent = null;
+			this.cachedLogLines = [];
+			this.renderPluginLogFileContent(card);
 		};
 		actions.createEl('button', { text: '📋 复制', cls: 'sillot-dev-btn' }).onclick = async () => {
 			try {
-				const exists = await this.plugin.app.vault.adapter.exists(logPath);
+				const exists = await this.plugin.app.vault.adapter.exists(this.logPath);
 				if (!exists) {
 					new Notice('日志文件不存在');
 					return;
 				}
-				const content = await this.plugin.app.vault.adapter.read(logPath);
+				const content = await this.plugin.app.vault.adapter.read(this.logPath);
 				navigator.clipboard.writeText(content);
 				new Notice('已复制插件日志');
 			} catch (e) {
@@ -1566,39 +1572,55 @@ export class DevPanelView extends ItemView {
 		};
 		actions.createEl('button', { text: '🗑️ 删除', cls: 'sillot-dev-btn sillot-dev-btn--warn' }).onclick = async () => {
 			try {
-				const exists = await this.plugin.app.vault.adapter.exists(logPath);
+				const exists = await this.plugin.app.vault.adapter.exists(this.logPath);
 				if (!exists) {
 					new Notice('日志文件不存在');
 					return;
 				}
-				await this.plugin.app.vault.adapter.remove(logPath);
+				await this.plugin.app.vault.adapter.remove(this.logPath);
+				this.cachedLogContent = null;
+				this.cachedLogLines = [];
 				new Notice('日志文件已删除');
-				this.render();
+				this.renderPluginLogFileContent(card);
 			} catch (e) {
 				new Notice(`删除失败: ${e.message}`);
 			}
 		};
 
-		let logContent = '';
-		try {
-			const exists = await this.plugin.app.vault.adapter.exists(logPath);
-			if (exists) {
-				logContent = await this.plugin.app.vault.adapter.read(logPath);
+		await this.renderPluginLogFileContent(card);
+		this.renderTaskHistory(container);
+	}
+
+	private async renderPluginLogFileContent(card: HTMLElement) {
+		const existingContent = card.querySelector('.sillot-dev-log-file-content');
+		if (existingContent) existingContent.remove();
+
+		const contentWrapper = card.createDiv({ cls: 'sillot-dev-log-file-content' });
+
+		if (!this.cachedLogContent) {
+			try {
+				const exists = await this.plugin.app.vault.adapter.exists(this.logPath);
+				if (exists) {
+					this.cachedLogContent = await this.plugin.app.vault.adapter.read(this.logPath);
+				}
+			} catch {
+				this.cachedLogContent = '';
 			}
-		} catch {
-			logContent = '';
 		}
 
-		if (!logContent) {
-			card.createEl('p', { text: '日志文件为空或不存在', cls: 'sillot-dev-hint' });
+		if (!this.cachedLogContent) {
+			contentWrapper.createEl('p', { text: '日志文件为空或不存在', cls: 'sillot-dev-hint' });
 			return;
 		}
 
-		const allLines = logContent.split('\n').filter(l => l.length > 0);
-		const lineCount = allLines.length;
-		const sizeKB = (new Blob([logContent]).size / 1024).toFixed(1);
+		if (this.cachedLogLines.length === 0) {
+			this.cachedLogLines = this.cachedLogContent.split('\n').filter(l => l.length > 0);
+		}
 
-		const filterBar = card.createDiv({ cls: 'sillot-dev-log-filter-bar' });
+		const lineCount = this.cachedLogLines.length;
+		const sizeKB = (new Blob([this.cachedLogContent]).size / 1024).toFixed(1);
+
+		const filterBar = contentWrapper.createDiv({ cls: 'sillot-dev-log-filter-bar' });
 
 		const filterLevels: { key: string; label: string; cls: string }[] = [
 			{ key: 'error', label: 'ERROR', cls: 'sillot-dev-log-filter-error' },
@@ -1624,39 +1646,76 @@ export class DevPanelView extends ItemView {
 					this.pluginLogFilter.add(fl.key);
 					btn.addClass('sillot-dev-log-filter-btn--active');
 				}
-				this.render();
+				this.renderLogContentOnly();
 			};
 		}
 
-		const filteredLines = allLines.filter(line => {
+		const filteredLines = this.cachedLogLines.filter(line => {
 			const level = this.detectLogLevel(line);
 			if (level) return this.pluginLogFilter.has(level);
 			return this.pluginLogFilter.has('banner');
 		});
 
-		const info = card.createEl('p', { cls: 'sillot-dev-hint' });
-		info.textContent = `${lineCount} 行, ${sizeKB} KB | 显示 ${filteredLines.length} 行`;
+		const displayLines = filteredLines.slice(-this.maxLogDisplayLines);
+		const isTruncated = filteredLines.length > this.maxLogDisplayLines;
 
-		const logContainer = card.createDiv({ cls: 'sillot-dev-log-container sillot-dev-log-selectable sillot-dev-plugin-log-container' });
+		const info = contentWrapper.createEl('p', { cls: 'sillot-dev-hint' });
+		info.textContent = `${lineCount} 行, ${sizeKB} KB | 过滤后 ${filteredLines.length} 行 | 显示最新 ${displayLines.length} 行${isTruncated ? '（最早日志已隐藏）' : ''}`;
 
-		for (const line of filteredLines) {
-			const entry = logContainer.createDiv({ cls: 'sillot-dev-plugin-log-line' });
-			const level = this.detectLogLevel(line);
-			if (level) {
-				entry.addClass(`sillot-dev-plugin-log-${level}`);
-			}
-			entry.textContent = line;
-		}
+		const logContainer = contentWrapper.createDiv({ cls: 'sillot-dev-log-container sillot-dev-log-selectable sillot-dev-plugin-log-container' });
+		logContainer.id = 'plugin-log-container';
 
-		const scrollActions = card.createDiv({ cls: 'sillot-dev-actions' });
+		this.renderLogLines(logContainer, displayLines);
+
+		const scrollActions = contentWrapper.createDiv({ cls: 'sillot-dev-actions' });
 		scrollActions.createEl('button', { text: '⬆ 滚动到开头', cls: 'sillot-dev-btn' }).onclick = () => {
 			logContainer.scrollTop = 0;
 		};
 		scrollActions.createEl('button', { text: '⬇ 滚动到末尾', cls: 'sillot-dev-btn' }).onclick = () => {
 			logContainer.scrollTop = logContainer.scrollHeight;
 		};
+	}
 
-		this.renderTaskHistory(container);
+	private renderLogContentOnly() {
+		const logContainer = this.contentEl.querySelector('#plugin-log-container') as HTMLElement;
+		if (!logContainer) return;
+
+		const filteredLines = this.cachedLogLines.filter(line => {
+			const level = this.detectLogLevel(line);
+			if (level) return this.pluginLogFilter.has(level);
+			return this.pluginLogFilter.has('banner');
+		});
+
+		const displayLines = filteredLines.slice(-this.maxLogDisplayLines);
+		const isTruncated = filteredLines.length > this.maxLogDisplayLines;
+
+		const info = this.contentEl.querySelector('.sillot-dev-log-file-content .sillot-dev-hint') as HTMLElement;
+		if (info) {
+			const lineCount = this.cachedLogLines.length;
+			const sizeKB = this.cachedLogContent ? (new Blob([this.cachedLogContent]).size / 1024).toFixed(1) : '0';
+			info.textContent = `${lineCount} 行, ${sizeKB} KB | 过滤后 ${filteredLines.length} 行 | 显示最新 ${displayLines.length} 行${isTruncated ? '（最早日志已隐藏）' : ''}`;
+		}
+
+		this.renderLogLines(logContainer, displayLines);
+	}
+
+	private renderLogLines(container: HTMLElement, lines: string[]) {
+		container.empty();
+
+		const fragment = document.createDocumentFragment();
+
+		for (const line of lines) {
+			const entry = document.createElement('div');
+			entry.className = 'sillot-dev-plugin-log-line';
+			const level = this.detectLogLevel(line);
+			if (level) {
+				entry.classList.add(`sillot-dev-plugin-log-${level}`);
+			}
+			entry.textContent = line;
+			fragment.appendChild(entry);
+		}
+
+		container.appendChild(fragment);
 	}
 
 	private renderTaskHistory(container: HTMLElement) {

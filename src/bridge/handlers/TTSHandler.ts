@@ -332,7 +332,7 @@ export class TTSHandler extends BaseSyntaxHandler {
 		};
 
 		utterance.onerror = (event) => {
-			console.error('[Sillot] TTS Error:', event.error);
+			this.plugin.logger?.error('TTS', '语音合成错误', event.error);
 			this.state.isPlaying = false;
 			this.updateStatus(`错误: ${event.error}`);
 			this.updatePlayButton(false);

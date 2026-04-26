@@ -95,7 +95,7 @@ export class ExperienceEnhanceHandler extends BaseSyntaxHandler {
 			this.includeCache.set(src, content);
 			return content;
 		} catch (error) {
-			console.error(`[Sillot] Include 加载失败 (${src}):`, error);
+			this.plugin.logger?.error('Include', 'Include 加载失败', `${src}: ${(error as Error).message}`);
 			return null;
 		}
 	}

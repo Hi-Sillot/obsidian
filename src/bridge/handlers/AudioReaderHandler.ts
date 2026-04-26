@@ -257,7 +257,7 @@ export class AudioReaderHandler extends BaseSyntaxHandler {
 		});
 
 		audioEl.addEventListener('error', () => {
-			console.error('[Sillot] Audio Reader Error: 音频加载失败');
+			this.plugin.logger?.error('Audio', '音频加载失败', config.src);
 			container.innerHTML = '<span class="sillot-audio-error">❌ 音频加载失败</span>';
 			container.classList.add('sillot-audio-error-state');
 		});
@@ -292,7 +292,7 @@ export class AudioReaderHandler extends BaseSyntaxHandler {
 					durationEl.style.display = 'none';
 				}
 			}).catch((err) => {
-				console.error('[Sillot] Audio playback failed:', err);
+				this.plugin.logger?.error('Audio', '音频播放失败', (err as Error).message);
 			});
 		} else {
 			audio.pause();

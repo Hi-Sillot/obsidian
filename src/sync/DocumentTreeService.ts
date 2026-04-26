@@ -6,22 +6,25 @@ import { AssetSyncService } from './assetSync';
 import { convertToPlumeFormat } from './PlumeConverter';
 import type { DocTreeNode, PullSource, PullDocumentRequest, PullDocumentResult, LocalExistenceResult } from '../types';
 import type { PermalinkIndexData, PathMapData } from '../bridge/types';
+import type { Logger } from '../utils/Logger';
 
 export class DocumentTreeService {
 	private vault: Vault;
 	private githubApi: GitHubApi;
 	private pathMapper: PathMapper;
 	private assetSync: AssetSyncService;
+	private logger: Logger | null;
 	private permalinkIndex: PermalinkIndexData | null = null;
 	private pathMap: PathMapData | null = null;
 	private siteDomain: string = '';
 	private docsDir: string = '';
 
-	constructor(vault: Vault, githubApi: GitHubApi, pathMapper: PathMapper) {
+	constructor(vault: Vault, githubApi: GitHubApi, pathMapper: PathMapper, logger?: Logger) {
 		this.vault = vault;
 		this.githubApi = githubApi;
 		this.pathMapper = pathMapper;
-		this.assetSync = new AssetSyncService(vault, githubApi, this.docsDir);
+		this.logger = logger || null;
+		this.assetSync = new AssetSyncService(vault, githubApi, this.docsDir, logger);
 	}
 
 	setSiteIndex(options: {
@@ -60,7 +63,7 @@ export class DocumentTreeService {
 			const items = await this.githubApi.listDirectory(docsDir, branch);
 			return this.buildTreeNode(docsDir, items);
 		} catch (error) {
-			console.error('[DocumentTreeService] Failed to fetch from GitHub:', error);
+			this.logger?.error('DocumentTreeService', 'Failed to fetch from GitHub', (error as Error).message);
 			return {
 				path: docsDir,
 				name: docsDir,
@@ -89,7 +92,7 @@ export class DocumentTreeService {
 				return this.buildTreeFromPathMapEntries(pathMap.entries, docsDir || 'docs');
 			}
 		} catch (error) {
-			console.error('[DocumentTreeService] Failed to fetch path-map.json, falling back to GitHub:', error);
+			this.logger?.error('DocumentTreeService', 'Failed to fetch path-map.json, falling back to GitHub', (error as Error).message);
 		}
 
 		if (baseUrl.includes('github.com')) {
@@ -430,14 +433,14 @@ export class DocumentTreeService {
 					}
 				}
 			} catch (error) {
-				console.error('[DocumentTreeService] Failed to preview from site:', error);
+				this.logger?.error('DocumentTreeService', 'Failed to preview from site', (error as Error).message);
 			}
 		}
 
 		// url 类型：直接 fetch 外部 URL 获取内容
 		if (source.type === 'url' && path.startsWith('http')) {
 			try {
-				console.log('[DocumentTreeService] Fetching external URL:', path);
+				this.logger?.debug('DocumentTreeService', 'Fetching external URL', path);
 				const response = await requestUrl({ url: path });
 				const htmlContent = response.text;
 
@@ -449,7 +452,7 @@ export class DocumentTreeService {
 				// 否则直接返回（可能是 Markdown 或纯文本）
 				return htmlContent;
 			} catch (error) {
-				console.error('[DocumentTreeService] Failed to fetch external URL:', error);
+				this.logger?.error('DocumentTreeService', 'Failed to fetch external URL', (error as Error).message);
 				throw new Error(`无法获取外部 URL 内容: ${path}`);
 			}
 		}
@@ -467,7 +470,7 @@ export class DocumentTreeService {
 			const mainContent = this.extractMainContent(html);
 
 			if (!mainContent) {
-				console.warn('[DocumentTreeService] No main content found in HTML');
+				this.logger?.warn('DocumentTreeService', 'No main content found in HTML');
 				return this.fallbackExtractText(html);
 			}
 
@@ -603,14 +606,14 @@ export class DocumentTreeService {
 		// 2.1 尝试 <main> 标签
 		const mainMatch = content.match(/<main[\s\S]*?<\/main>/i);
 		if (mainMatch && mainMatch[0].length > 100) {
-			console.log('[DocumentTreeService] Found <main> element for content extraction');
+			this.logger?.debug('DocumentTreeService', 'Found <main> element for content extraction', `${mainMatch[0].length} chars`);
 			return mainMatch[0];
 		}
 
 		// 2.2 尝试 <article> 标签
 		const articleMatch = content.match(/<article[\s\S]*?<\/article>/i);
 		if (articleMatch && articleMatch[0].length > 100) {
-			console.log('[DocumentTreeService] Found <article> element for content extraction');
+			this.logger?.debug('DocumentTreeService', 'Found <article> element for content extraction', `${articleMatch[0].length} chars`);
 			return articleMatch[0];
 		}
 
@@ -624,7 +627,7 @@ export class DocumentTreeService {
 		for (const pattern of contentContainerPatterns) {
 			const match = content.match(pattern);
 			if (match && match[0].length > 100) {
-				console.log(`[DocumentTreeService] Found content container (${match[0].length} chars)`);
+				this.logger?.debug('DocumentTreeService', 'Found content container', `${match[0].length} chars`);
 				return match[0];
 			}
 		}
@@ -636,11 +639,11 @@ export class DocumentTreeService {
 		const textOnly = content.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 
 		if (textOnly.length < 50) {
-			console.warn('[DocumentTreeService] Remaining content too short after cleanup:', textOnly.length, 'chars');
+			this.logger?.warn('DocumentTreeService', 'Remaining content too short after cleanup', `${textOnly.length} chars`);
 			return null; // 内容太少，可能提取失败
 		}
 
-		console.log(`[DocumentTreeService] Using remaining content after cleanup (${textOnly.length} chars of text)`);
+		this.logger?.debug('DocumentTreeService', 'Using remaining content after cleanup', `${textOnly.length} chars of text`);
 		return content;
 	}
 
@@ -745,11 +748,7 @@ export class DocumentTreeService {
 			let conversionMessage = '';
 			if (converted) {
 				conversionMessage = `（已转换为 VuePress Plume 格式，标题: ${frontmatter.title}）`;
-				console.log(`[DocumentTreeService] Converted to Plume format:`, {
-					path: request.cloudPath,
-					title: frontmatter.title,
-					permalink: frontmatter.permalink,
-				});
+				this.logger?.debug('DocumentTreeService', 'Converted to Plume format', `path=${request.cloudPath}, title=${frontmatter.title}, permalink=${frontmatter.permalink}`);
 			}
 
 			// 确保中间目录存在
@@ -783,7 +782,7 @@ export class DocumentTreeService {
 					}
 				}
 			} catch (error) {
-				console.warn('[DocumentTreeService] Asset sync failed (non-critical):', error);
+				this.logger?.warn('DocumentTreeService', 'Asset sync failed (non-critical)', (error as Error).message);
 				assetMessage = '（图片同步跳过）';
 			}
 
@@ -870,11 +869,11 @@ export class DocumentTreeService {
 			// 组合最终路径
 			const savePath = ['external', hostname, ...filteredDirs, fileName].join('/');
 
-			console.log(`[DocumentTreeService] URL → 本地路径: ${url} → ${savePath}`);
+			this.logger?.debug('DocumentTreeService', 'URL → 本地路径', `${url} → ${savePath}`);
 
 			return savePath;
 		} catch (error) {
-			console.error('[DocumentTreeService] Failed to parse URL for save path:', error);
+			this.logger?.error('DocumentTreeService', 'Failed to parse URL for save path', (error as Error).message);
 			// 回退到简单处理
 			const fallbackName = url.split('/').pop()?.replace(/\.(html?|aspx?)$/i, '.md') || 'untitled.md';
 			return `external/${fallbackName}`;

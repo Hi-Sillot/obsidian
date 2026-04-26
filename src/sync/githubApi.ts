@@ -1,4 +1,5 @@
 import { requestUrl, RequestUrlParam } from 'obsidian';
+import type { Logger } from '../utils/Logger';
 
 export interface PublishOptions {
 	commitMessage: string;
@@ -27,10 +28,12 @@ interface GitBlob {
 export class GitHubApi {
 	private repo: string;
 	private token: string;
+	private logger: Logger | null;
 
-	constructor(repo: string, token: string) {
+	constructor(repo: string, token: string, logger?: Logger) {
 		this.repo = repo;
 		this.token = token;
+		this.logger = logger || null;
 	}
 
 	getRepo(): string {
@@ -101,7 +104,7 @@ export class GitHubApi {
 			});
 			return response.arrayBuffer;
 		} catch (error) {
-			console.error(`[GitHubApi] Failed to get binary file ${path}:`, error);
+			this.logger?.error('GitHubApi', `Failed to get binary file ${path}`, (error as Error).message);
 			return null;
 		}
 	}
