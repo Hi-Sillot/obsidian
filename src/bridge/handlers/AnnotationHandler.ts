@@ -1,10 +1,11 @@
 import type VuePressPublisherPlugin from '../../main';
 import { BaseSyntaxHandler } from './SyntaxHandler';
+import { ANNOTATION_PH_L, ANNOTATION_PH_R, ANNOTATION_PH_DETECT, ANNOTATION_PH_SPLIT } from '../constants';
 
-const PH_L = '\u200B\u200B\u200B';
-const PH_R = '\u200C\u200C\u200C';
-const PH_DETECT = /[\u200B]{3}([^\u200B\u200C]+)[\u200C]{3}/;
-const PH_SPLIT = /([\u200B]{3}[^\u200B\u200C]+[\u200C]{3})/g;
+const PH_L = ANNOTATION_PH_L;
+const PH_R = ANNOTATION_PH_R;
+const PH_DETECT = ANNOTATION_PH_DETECT;
+const PH_SPLIT = ANNOTATION_PH_SPLIT;
 const INLINE_REGEX = /\[\+([^\]]+)\]/g;
 
 export class AnnotationHandler extends BaseSyntaxHandler {
@@ -28,7 +29,7 @@ export class AnnotationHandler extends BaseSyntaxHandler {
 		this.scheduleDeferredProcessing(el);
 	}
 
-	preprocessMarkdown(text: string): string {
+	preprocessMarkdown(text: string, _sourcePath: string): string {
 		return this.collectAndReplace(text);
 	}
 

@@ -11,7 +11,7 @@ export class AbbreviationHandler extends BaseSyntaxHandler {
 		this.processAbbreviationsInDOM(el);
 	}
 
-	preprocessMarkdown(text: string): string {
+	preprocessMarkdown(text: string, _sourcePath: string): string {
 		return this.collectAndReplaceAbbreviations(text);
 	}
 

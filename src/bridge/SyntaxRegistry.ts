@@ -15,8 +15,10 @@ import { TTSHandler } from './handlers/TTSHandler';
 import { AudioReaderHandler } from './handlers/AudioReaderHandler';
 import { CardHandler } from './handlers/CardHandler';
 import { FileTreeHandler } from './handlers/FileTreeHandler';
+import { PlumeExtensionHandler } from './handlers/PlumeExtensionHandler';
 
 const TAG = 'Syntax';
+const TOC_REGEX = /\[\[TOC\]\]/i;
 
 interface PendingContainer {
 	key: string;
@@ -48,6 +50,7 @@ export class SyntaxRegistry {
 	private audioReaderHandler: AudioReaderHandler;
 	private cardHandler: CardHandler;
 	private fileTreeHandler: FileTreeHandler;
+	private plumeExtensionHandler: PlumeExtensionHandler;
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -65,6 +68,7 @@ export class SyntaxRegistry {
 		this.audioReaderHandler = new AudioReaderHandler(plugin);
 		this.cardHandler = new CardHandler(plugin);
 		this.fileTreeHandler = new FileTreeHandler(plugin);
+		this.plumeExtensionHandler = new PlumeExtensionHandler(plugin);
 	}
 
 	loadInlineComponents(data: InlineComponentData) {
@@ -94,6 +98,8 @@ export class SyntaxRegistry {
 
 	private async processSection(el: HTMLElement, ctx: MarkdownPostProcessorContext) {
 		const sourcePath = ctx.sourcePath;
+		// 设置当前处理的文档路径，脚注状态按文档隔离
+		PlumeExtensionHandler.setCurrentDocument(sourcePath);
 		const text = this.getSectionRawMarkdown(el, ctx);
 
 		if (this.isInsideCodeBlock(el, ctx)) {
@@ -208,13 +214,19 @@ export class SyntaxRegistry {
 		const hasQRCode = this.hasPatternOutsideCode(text, /@\[qrcode/);
 		const hasAbbreviation = /^\*\[[^\]]+\]:\s/m.test(text);
 		const hasAnnotation = this.hasAnnotationOutsideCode(text);
+		const hasTOC = TOC_REGEX.test(text);
+		const hasSuperscript = this.hasPatternOutsideCode(text, /\^[\S]+\^/);
+		const hasSubscript = this.hasPatternOutsideCode(text, /~[\S]+~/);
 
-		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader || hasQRCode || hasAbbreviation || hasAnnotation) {
-			let preprocessed = this.inlineComponentHandler.preprocessMarkdown!(text);
+		const hasFootnoteRef = /\\?\[\^/.test(text);
+
+		if (hasCustomComponent || hasVideoTabs || hasVideoInline || hasCedossContainer || hasAudioReader || hasQRCode || hasAbbreviation || hasAnnotation || hasTOC || hasSuperscript || hasSubscript || hasFootnoteRef) {
+			let preprocessed = this.inlineComponentHandler.preprocessMarkdown!(text, ctx.sourcePath);
 			preprocessed = this.inlineComponentHandler.preprocessCedossContainerMarkdown(preprocessed);
-			preprocessed = this.videoHandler.preprocessMarkdown!(preprocessed);
-			preprocessed = this.audioReaderHandler.preprocessMarkdown!(preprocessed);
-			preprocessed = this.inlineSyntaxHandler.preprocessMarkdown!(preprocessed);
+			preprocessed = this.videoHandler.preprocessMarkdown!(preprocessed, ctx.sourcePath);
+			preprocessed = this.audioReaderHandler.preprocessMarkdown!(preprocessed, ctx.sourcePath);
+			preprocessed = this.inlineSyntaxHandler.preprocessMarkdown!(preprocessed, ctx.sourcePath);
+			preprocessed = this.plumeExtensionHandler.preprocessMarkdown!(preprocessed, ctx.sourcePath);
 			el.empty();
 			el.style.visibility = 'hidden';
 			await MarkdownRenderer.render(
@@ -225,6 +237,20 @@ export class SyntaxRegistry {
 			return;
 		}
 
+		await this.processSectionSimple(el, text, ctx);
+	}
+
+	private async processSectionSimple(el: HTMLElement, text: string, ctx: MarkdownPostProcessorContext): Promise<void> {
+		const hasPlume = this.plumeExtensionHandler.hasPlumeExtension(text);
+		if (hasPlume) {
+			let preprocessed = this.plumeExtensionHandler.preprocessMarkdown!(text, ctx.sourcePath);
+			el.empty();
+			el.style.visibility = 'hidden';
+			await MarkdownRenderer.render(
+				this.plugin.app, preprocessed, el, ctx.sourcePath, this.plugin
+			);
+			el.style.visibility = '';
+		}
 		await this.processInlineComponents(el);
 	}
 
@@ -239,6 +265,7 @@ export class SyntaxRegistry {
 		this.experienceEnhanceHandler.processInlineComponents!(el);
 		this.ttsHandler.processInlineComponents!(el);
 		this.audioReaderHandler.processInlineComponents!(el);
+		this.plumeExtensionHandler.processInlineComponents(el);
 	}
 
 	private async finalizeContainer(ctx: MarkdownPostProcessorContext, pending: PendingContainer) {
@@ -270,6 +297,8 @@ export class SyntaxRegistry {
 			container = await this.cardHandler.buildContainer(containerType, title, contentText, ctx);
 		} else if (containerType === 'file-tree') {
 			container = await this.fileTreeHandler.buildContainer(containerType, title, contentText, ctx);
+		} else if (PlumeExtensionHandler.ALIGN_TYPES.has(containerType)) {
+			container = await this.plumeExtensionHandler.buildAlignContainer(containerType, contentText, ctx);
 		} else if (containerType === 'cedoss') {
 			container = await this.createCedossContainerFromText(contentText, ctx);
 		} else {
@@ -328,9 +357,11 @@ export class SyntaxRegistry {
 	}
 
 	private hasPatternOutsideCode(text: string, pattern: RegExp): boolean {
+		pattern.lastIndex = 0;
 		let cleaned = text;
 		cleaned = cleaned.replace(/```[\s\S]*?```/g, '');
 		cleaned = cleaned.replace(/`[^`]+`/g, '');
+		pattern.lastIndex = 0;
 		return pattern.test(cleaned);
 	}
 
@@ -353,6 +384,15 @@ export class SyntaxRegistry {
 			return true;
 		}
 		if (el.closest('pre') || el.closest('code')) {
+			return true;
+		}
+		// 检查增强代码块的特殊类名
+		if (el.classList.contains('el-pre') || el.classList.contains('code-block') || el.classList.contains('sillot-code-enhanced')) {
+			return true;
+		}
+		// 仅当元素自身就是 pre/code 标签时才判定为代码块
+		// 避免误判包含行内代码的普通段落
+		if (el.querySelector(':scope > pre, :scope > code')) {
 			return true;
 		}
 

@@ -3,7 +3,7 @@ import type VuePressPublisherPlugin from '../../main';
 
 export interface SyntaxHandler {
 	processInlineComponents?(el: HTMLElement): void;
-	preprocessMarkdown?(text: string): string;
+	preprocessMarkdown?(text: string, sourcePath: string): string;
 	buildContainer?(containerType: string, title: string, contentText: string, ctx: MarkdownPostProcessorContext): Promise<HTMLElement | null>;
 }
 
@@ -15,6 +15,6 @@ export abstract class BaseSyntaxHandler implements SyntaxHandler {
 	}
 
 	processInlineComponents?(el: HTMLElement): void;
-	preprocessMarkdown?(text: string): string;
+	preprocessMarkdown?(text: string, sourcePath: string): string;
 	buildContainer?(containerType: string, title: string, contentText: string, ctx: MarkdownPostProcessorContext): Promise<HTMLElement | null>;
 }

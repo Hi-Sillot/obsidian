@@ -39,12 +39,12 @@ export class InlineSyntaxHandler extends BaseSyntaxHandler {
 		await this.qrcodeHandler.processInlineComponents(el);
 	}
 
-	preprocessMarkdown(text: string): string {
+	preprocessMarkdown(text: string, sourcePath: string): string {
 		let processed = text;
 
-		processed = this.abbreviationHandler.preprocessMarkdown(processed);
-		processed = this.annotationHandler.preprocessMarkdown(processed);
-		processed = this.qrcodeHandler.preprocessMarkdown(processed);
+		processed = this.abbreviationHandler.preprocessMarkdown(processed, sourcePath);
+		processed = this.annotationHandler.preprocessMarkdown(processed, sourcePath);
+		processed = this.qrcodeHandler.preprocessMarkdown(processed, sourcePath);
 		processed = this.preprocessAbbr(processed);
 		processed = this.preprocessIcon(processed);
 

@@ -686,6 +686,27 @@
 	background: var(--interactive-hover);
 }
 
+.sillot-doc-sync-panel-footnote-badge {
+	background: var(--background-modifier-hover);
+}
+
+.sillot-doc-sync-panel-footnote-badge:hover {
+	background: var(--interactive-hover);
+}
+
+.sillot-doc-sync-panel-footnote-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sillot-doc-sync-panel-footnote-item {
+	padding: 6px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+}
+
 /* Config Editor Modal */
 .sillot-config-editor-modal .modal-content {
 	padding: 0;
@@ -5249,6 +5270,275 @@
 }
 
 /* ============================================
+   Plume Extensions - Plume 扩展对等渲染
+   extensions.md: 上下角标 / 对齐容器 / TOC / 标题锚点
+   ============================================ */
+
+/* 上角标 ^text^ */
+.vp-sup {
+	font-size: 0.75em;
+	vertical-align: super;
+	line-height: 0;
+}
+
+/* 下角标 ~text~ */
+.vp-sub {
+	font-size: 0.75em;
+	vertical-align: sub;
+	line-height: 0;
+}
+
+/* 自定义对齐容器 ::: left/center/right ::: */
+.vp-align {
+	margin: 16px 0;
+	clear: both;
+}
+
+.vp-align--left {
+	text-align: left;
+}
+
+.vp-align--center {
+	text-align: center;
+}
+
+.vp-align--right {
+	text-align: right;
+}
+
+.vp-align-content {
+	display: inline-block;
+	max-width: 100%;
+}
+
+.vp-align--left .vp-align-content {
+	display: block;
+}
+
+.vp-align--center .vp-align-content {
+	text-align: left;
+}
+
+.vp-align--right .vp-align-content {
+	text-align: left;
+}
+
+/* 目录表 [[TOC]] */
+.vp-toc-placeholder {
+	display: block;
+	margin: 16px 0;
+	padding: 12px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+}
+
+.vp-toc-empty,
+.vp-toc-error {
+	color: var(--text-muted);
+	font-style: italic;
+	font-size: 13px;
+}
+
+.vp-toc-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.vp-toc-nested {
+	list-style: none;
+	margin: 4px 0 0 0;
+	padding-left: 20px;
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.vp-toc-item {
+	margin: 2px 0;
+}
+
+.vp-toc-link {
+	display: inline-block;
+	padding: 2px 6px;
+	font-size: 13px;
+	color: var(--text-normal);
+	text-decoration: none;
+	border-radius: 3px;
+	transition: background-color 0.15s, color 0.15s;
+	line-height: 1.6;
+}
+
+.vp-toc-link:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--interactive-accent);
+}
+
+.vp-toc-level-1 .vp-toc-link {
+	font-weight: 600;
+	font-size: 14px;
+}
+
+.vp-toc-level-2 .vp-toc-link {
+	font-weight: 500;
+	font-size: 13px;
+}
+
+.vp-toc-level-3 .vp-toc-link,
+.vp-toc-level-4 .vp-toc-link,
+.vp-toc-level-5 .vp-toc-link,
+.vp-toc-level-6 .vp-toc-link {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+/* 标题自定义锚点 {#anchor} */
+.vp-heading-anchor {
+	display: inline-block;
+	margin-left: 8px;
+	color: var(--text-faint);
+	font-size: 0.8em;
+	vertical-align: middle;
+	text-decoration: none;
+	opacity: 0;
+	transition: opacity 0.15s, color 0.15s;
+	font-family: var(--font-monospace);
+	cursor: pointer;
+}
+
+h1:hover .vp-heading-anchor,
+h2:hover .vp-heading-anchor,
+h3:hover .vp-heading-anchor,
+h4:hover .vp-heading-anchor,
+h5:hover .vp-heading-anchor,
+h6:hover .vp-heading-anchor {
+	opacity: 1;
+}
+
+.vp-heading-anchor:hover {
+	color: var(--interactive-accent);
+}
+
+/* 脚注 [^ref] */
+.vp-fn-ref a {
+	color: var(--interactive-accent);
+	text-decoration: none;
+	font-size: 0.75em;
+	line-height: 0;
+	vertical-align: super;
+	cursor: pointer;
+}
+
+.vp-fn-ref a:hover {
+	opacity: 0.8;
+}
+
+.vp-footnotes {
+	margin-top: 24px;
+	padding-top: 16px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.vp-footnotes-separator {
+	display: none;
+}
+
+.vp-footnotes-list {
+	list-style: decimal;
+	padding-left: 28px;
+	margin: 8px 0 0 0;
+	font-size: 13px;
+}
+
+.vp-footnote-item {
+	margin-bottom: 6px;
+	padding-left: 4px;
+	line-height: 1.6;
+}
+
+.vp-footnote-def {
+	display: inline;
+}
+
+.vp-footnote-def p {
+	display: inline;
+}
+
+.vp-footnote-backref {
+	display: inline-block;
+	margin-left: 6px;
+	color: var(--text-faint);
+	font-size: 12px;
+	text-decoration: none;
+	vertical-align: middle;
+	cursor: pointer;
+}
+
+.vp-footnote-backref:hover {
+	color: var(--interactive-accent);
+}
+
+.vp-fn-target--hl {
+	background-color: var(--background-modifier-highlight);
+	transition: background-color 2s ease-out;
+}
+
+.vp-fn-popup {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-normal);
+}
+
+.vp-fn-popup p {
+	margin: 0 0 8px 0;
+}
+
+.vp-fn-popup p:last-child {
+	margin-bottom: 0;
+}
+
+/* 任务列表增强 */
+.vp-task-list {
+	list-style: none !important;
+	padding-left: 0 !important;
+}
+
+.vp-task-item {
+	list-style: none !important;
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	margin: 2px 0;
+}
+
+.vp-task-item > input[type=checkbox] {
+	flex-shrink: 0;
+	margin-top: 3px;
+	accent-color: var(--interactive-accent);
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+}
+
+.vp-task-p {
+	display: contents;
+}
+
+/* 任务列表兜底渲染（Obsidian 未生成 checkbox 时） */
+.vp-task-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+}
+
+.vp-task-label .task-list-item-checkbox {
+	flex-shrink: 0;
+	margin-top: 2px;
+	accent-color: var(--interactive-accent);
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+}
 
 
 /* ============================================

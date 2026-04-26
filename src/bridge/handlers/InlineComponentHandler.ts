@@ -19,7 +19,7 @@ export class InlineComponentHandler extends BaseSyntaxHandler {
 		this.cedossMap = data.cedossMap || {};
 	}
 
-	preprocessMarkdown(text: string): string {
+	preprocessMarkdown(text: string, _sourcePath: string): string {
 		let result = text;
 
 		result = result.replace(

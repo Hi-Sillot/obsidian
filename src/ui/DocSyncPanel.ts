@@ -32,6 +32,7 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 	private updateTimer: number | null = null;
 	private _syncBlocks: ParsedSyncBlock[] = [];
 	private _components: Array<{ tag: string; detail: string; line: number; ch: number }> = [];
+	private _footnoteInfo: { defCount: number; refCount: number; defs: Array<{ id: string; content: string; num: number; refCount: number }> } = { defCount: 0, refCount: 0, defs: [] };
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -157,6 +158,7 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 		this._diffResult = null;
 		this._syncBlocks = [];
 		this._components = [];
+		this._footnoteInfo = { defCount: 0, refCount: 0, defs: [] };
 	}
 
 	private async renderPanel() {
@@ -192,6 +194,7 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 
 		if (this.currentFile) {
 			this._components = await this.extractComponents(this.currentFile);
+			this._footnoteInfo = await this.extractFootnotes(content);
 		}
 
 		if (!this.panelEl) return;
@@ -245,6 +248,45 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 		}
 
 		return results;
+	}
+
+	private async extractFootnotes(content: string): Promise<{ defCount: number; refCount: number; defs: Array<{ id: string; content: string; num: number; refCount: number }> }> {
+		// 移除代码块，避免误统计
+		const noCode = content.replace(/```[\s\S]*?```/g, '');
+		const lines = noCode.split('\n');
+		const defs = new Map<string, string>();
+		const refCounts = new Map<string, number>();
+		let refCount = 0;
+
+		// 匹配 \[^id]: 或 [^id]: 定义
+		const fnDefRegex = /^\s*\\?\[\^(\S+?)\]:\s*(.*)$/;
+		// 匹配 \[^id] 或 [^id] 引用（不含定义行）
+		const fnRefRegex = /\\?\[\^(\S+?)\]/g;
+
+		for (const line of lines) {
+			const defMatch = line.match(fnDefRegex);
+			if (defMatch) {
+				defs.set(defMatch[1], defMatch[2].trim());
+			} else {
+				// 只有非定义行才统计引用
+				let refMatch;
+				while ((refMatch = fnRefRegex.exec(line)) !== null) {
+					refCount++;
+					const id = refMatch[1];
+					refCounts.set(id, (refCounts.get(id) || 0) + 1);
+				}
+				fnRefRegex.lastIndex = 0;
+			}
+		}
+
+		const defArray = Array.from(defs.entries()).map(([id, content], idx) => ({
+			id,
+			content,
+			num: idx + 1,
+			refCount: refCounts.get(id) || 0,
+		}));
+
+		return { defCount: defArray.length, refCount, defs: defArray };
 	}
 
 	private computeVisibleDiffLines(diff: DiffResult, contextRadius: number): Set<number> {
@@ -442,6 +484,7 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 	getAuthors() { return this.getCurrentAuthors(); }
 	getCurrentFile(): TFile | null { return this.currentFile; }
 	isDesktop() { return Platform.isDesktop; }
+	getFootnoteInfo() { return this._footnoteInfo; }
 
 	async syncCurrentDoc() {
 		if (!this.plugin.syncManager || !this.currentFile) return;

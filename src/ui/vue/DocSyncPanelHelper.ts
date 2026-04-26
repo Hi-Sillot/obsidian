@@ -51,7 +51,7 @@ import { useObsidianTheme } from './composables/useObsidianTheme';
 const PANEL_CLASS = 'sillot-doc-sync-panel';
 
 type PanelState = 'minimized' | 'default' | 'expanded';
-type ActiveTab = 'sync' | 'publish' | 'components' | 'authors';
+type ActiveTab = 'sync' | 'publish' | 'components' | 'authors' | 'footnotes';
 type PublishDisplayMode = 'default' | 'expanded';
 type EditorMode = 'reading' | 'source' | 'live-preview';
 
@@ -76,6 +76,12 @@ interface TaskInfo {
 	status: 'running' | 'success' | 'failed';
 }
 
+interface FootnoteInfo {
+	defCount: number;
+	refCount: number;
+	defs: Array<{ id: string; content: string; num: number; refCount: number }>;
+}
+
 const STATUS_CONFIG: Record<PublishStatus, { icon: string; text: string; cls: string }> = {
 	unpublished: { icon: '⚪', text: '未发布', cls: 'unpublished' },
 	published: { icon: '🟢', text: '已发布', cls: 'published' },
@@ -97,6 +103,7 @@ export interface DocSyncPanelAPI {
 	getCompareSource: () => DiffCompareSource;
 	setCompareSource: (source: DiffCompareSource) => void;
 	getActiveTasks: () => TaskInfo[];
+	getFootnoteInfo: () => FootnoteInfo;
 	getComponents: () => ComponentInfo[];
 	getAuthors: () => AuthorInfo[];
 	getCurrentFile: () => TFile | null;
@@ -313,6 +320,7 @@ function renderMinimized(
 	};
 
 	const mode = modeIcons[editorMode.value];
+	const footnoteInfo = api.getFootnoteInfo();
 
 	const renderPublishBadge = () => {
 		const info = publishInfo.value;
@@ -358,6 +366,21 @@ function renderMinimized(
 		]);
 	};
 
+	const renderFootnoteBadge = () => {
+		if (footnoteInfo.defCount === 0 && footnoteInfo.refCount === 0) return null;
+
+		return h(NTooltip, { trigger: 'hover' }, {
+			trigger: () => h('div', {
+				class: `${PANEL_CLASS}-minimized ${PANEL_CLASS}-footnote-badge`,
+				onClick: (e: Event) => { e.stopPropagation(); onSetActiveTab('footnotes'); onSetPanelState('default'); },
+			}, [
+				h('span', { class: `${PANEL_CLASS}-icon` }, '📝'),
+				h('span', { class: `${PANEL_CLASS}-count` }, `${footnoteInfo.defCount} 定义 · ${footnoteInfo.refCount} 引用`),
+			]),
+			default: () => `脚注: ${footnoteInfo.defCount} 定义 · ${footnoteInfo.refCount} 引用`,
+		});
+	};
+
 	return h('div', { class: `${PANEL_CLASS}-minimized-wrapper` }, [
 		h(NTooltip, { trigger: 'hover' }, {
 			trigger: () => h('div', {
@@ -380,6 +403,7 @@ function renderMinimized(
 			]),
 			default: () => `同步块: ${syncBlocks.value.length}`,
 		}),
+		renderFootnoteBadge(),
 		renderTaskIndicator(),
 	]);
 }
@@ -426,6 +450,7 @@ function renderExpandedPanel(
 			h(NTabPane, { name: 'publish', tab: '📤 发布' }),
 			h(NTabPane, { name: 'components', tab: '🏷️ 组件' }),
 			h(NTabPane, { name: 'authors', tab: '👤 作者' }),
+			h(NTabPane, { name: 'footnotes', tab: '📝 脚注' }),
 		],
 	});
 
@@ -442,6 +467,9 @@ function renderExpandedPanel(
 			break;
 		case 'authors':
 			tabContent = renderAuthorsTab(authors, currentFile, api, showAddAuthorModal, availableAuthors, loadingAuthors);
+			break;
+		case 'footnotes':
+			tabContent = renderFootnotesTab(api);
 			break;
 	}
 
@@ -897,5 +925,31 @@ function renderAuthorsTab(
 				),
 			}),
 		addAuthorModal,
+	]);
+}
+
+function renderFootnotesTab(api: DocSyncPanelAPI) {
+	const footnoteInfo = api.getFootnoteInfo();
+	const defs = footnoteInfo.defs || [];
+
+	return h('div', { class: `${PANEL_CLASS}-tab-content` }, [
+		h(NSpace, { justify: 'space-between', align: 'center', style: { marginBottom: '8px' } }, {
+			default: () => [
+				h(NText, { depth: 2 }, { default: () => `脚注 (${footnoteInfo.defCount} 定义 · ${footnoteInfo.refCount} 引用)` }),
+			],
+		}),
+		defs.length === 0
+			? h(NEmpty, { description: '此文档无脚注', size: 'small' })
+			: h('div', { class: `${PANEL_CLASS}-footnote-list` }, defs.map(def =>
+				h('div', { class: `${PANEL_CLASS}-footnote-item`, key: def.id }, [
+					h(NSpace, { align: 'center', size: 6 }, {
+						default: () => [
+							h(NTag, { size: 'small', type: 'info' }, { default: () => `[${def.num}]` }),
+							h(NText, { style: { fontSize: '12px' } }, { default: () => def.content }),
+						],
+					}),
+					h(NText, { depth: 3, style: { fontSize: '11px', marginTop: '4px' } }, { default: () => `引用 ${def.refCount} 次` }),
+				])
+			)),
 	]);
 }

@@ -2,7 +2,7 @@ import type VuePressPublisherPlugin from '../../main';
 import { BaseSyntaxHandler } from './SyntaxHandler';
 
 export class VideoHandler extends BaseSyntaxHandler {
-	preprocessMarkdown(text: string): string {
+	preprocessMarkdown(text: string, _sourcePath: string): string {
 		let result = this.preprocessVideoTabsMarkdown(text);
 		result = this.preprocessVideoInlineMarkdown(result);
 		return result;

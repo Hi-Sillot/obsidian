@@ -682,6 +682,27 @@
 	background: var(--interactive-hover);
 }
 
+.sillot-doc-sync-panel-footnote-badge {
+	background: var(--background-modifier-hover);
+}
+
+.sillot-doc-sync-panel-footnote-badge:hover {
+	background: var(--interactive-hover);
+}
+
+.sillot-doc-sync-panel-footnote-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sillot-doc-sync-panel-footnote-item {
+	padding: 6px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+}
+
 /* Config Editor Modal */
 .sillot-config-editor-modal .modal-content {
 	padding: 0;

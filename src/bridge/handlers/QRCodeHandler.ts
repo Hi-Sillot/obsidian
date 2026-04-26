@@ -31,7 +31,7 @@ export class QRCodeHandler extends BaseSyntaxHandler {
 		await this.processInlineQRCodes(el);
 	}
 
-	preprocessMarkdown(text: string): string {
+	preprocessMarkdown(text: string, _sourcePath: string): string {
 		return this.preprocessInlineQRCodes(text);
 	}
 

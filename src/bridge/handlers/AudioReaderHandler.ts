@@ -18,7 +18,7 @@ export class AudioReaderHandler extends BaseSyntaxHandler {
 		this.processAudioReaders(el);
 	}
 
-	preprocessMarkdown(text: string): string {
+	preprocessMarkdown(text: string, _sourcePath: string): string {
 		return this.preprocessAudioReaderTags(text);
 	}
 
