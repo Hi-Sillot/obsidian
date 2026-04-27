@@ -1,94 +1,178 @@
-# Obsidian Sample Plugin
+# Sillot - 汐洛生态 Obsidian 插件
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+汐洛（Sillot）生态的 Obsidian 端入口，专注于**跨平台一致性渲染**和**数据源维护**，让笔记内容在 Obsidian 与发布站点间保持视觉与结构的一致性。
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## 汐洛生态愿景
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+汐洛致力于打通主流笔记工具与内容发布平台，构建统一的知识管理生态：
 
-## First time developing plugins?
+- **Obsidian** ↔ **VuePress** - 当前已实现（本插件）
+- **汐洛绞架**（基于思源笔记） - 规划中
 
-Quick starting guide for new plugin devs:
+生态核心不是简单的同步，而是确保内容在不同平台间**渲染一致、结构一致、体验一致**。
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+## 核心能力
 
-## Releasing new releases
+### 一致性渲染
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+- **Bridge 系统** - 将站点的组件、样式、语法同步到 Obsidian，实现与站点一致的渲染效果
+- **VuePress 样式加载** - 在 Obsidian 中加载并应用站点样式
+- **组件渲染** - 支持站点自定义组件在 Obsidian 中渲染
+- **同步块渲染** - 通过 `sync-block` 语法标记需要与站点保持同步的内容块
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+### 数据源维护
 
-## Adding your plugin to the community plugin list
+- **发布笔记** - 将笔记发布到 VuePress 站点（支持 PR 模式）
+- **从云端拉取** - 浏览云端文档树，预览并下载文档到本地
+- **块级同步标记** - 在笔记中标记与站点对应的内容块，维护双向引用关系
+- **路径映射** - 智能处理 Obsidian 路径与站点路径的映射
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+### 站点集成
 
-## How to use
+- **站点图谱** - 可视化展示站点文档关系图（全局/局部）
+- **配置编辑器** - 可视化编辑站点配置文件
+- **发布状态检查** - 跟踪 PR 状态和发布进度
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+### 移动端支持
 
-## Manually installing the plugin
+- **移动端适配** - 完整的移动端 UI（TDesign Mobile Vue）
+- **移动端配置编辑器** - 在移动端编辑站点配置
+- **移动端文档拉取** - 移动端浏览、预览、下载云端文档
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+### 开发工具
 
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint ./src/`
+- **发布管理面板** - 侧边栏面板管理发布任务
+- **同步管理面板** - 可视化面板管理同步任务状态
+- **状态栏集成** - 实时显示任务进度
+- **日志系统** - 分级日志，支持文件输出
 
-## Funding URL
+## 安装
 
-You can include funding URLs where people who use your plugin can financially support it.
+### 从社区插件市场
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+1. 在 Obsidian 设置 → 第三方插件 → 浏览
+2. 搜索 "Sillot"
+3. 点击安装并启用
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+### 手动安装
+
+1. 从 [GitHub Releases](https://github.com/Hi-Sillot/obsidian/releases) 下载 `main.js`、`styles.css`、`manifest.json`
+2. 将文件复制到 `Vault/.obsidian/plugins/sillot/` 目录
+3. 在 Obsidian 设置中启用插件
+
+## 配置
+
+### 必需配置
+
+| 配置项       | 说明                  | 示例                 |
+| ------------ | --------------------- | -------------------- |
+| GitHub Token | 用于访问 GitHub API   | `ghp_xxxxxxxxxxxx` |
+| GitHub 仓库  | VuePress 文档所在仓库 | `owner/repo`       |
+| 文档目录     | docs 目录路径         | `docs`             |
+
+### 可选配置
+
+| 配置项     | 说明                     | 默认值                                |
+| ---------- | ------------------------ | ------------------------------------- |
+| 站点域名   | 用于生成文档链接         | -                                     |
+| 默认分支   | 仓库默认分支             | `main`                              |
+| 部署分支   | 站点部署分支             | `gh-pages`                          |
+| 发布根路径 | 本地 VuePress 项目根路径 | -                                     |
+| 样式路径   | VuePress 样式文件路径    | `docs/.vuepress/styles/index.style` |
+| 更新渠道   | 插件更新来源             | `github`                            |
+
+## 使用方法
+
+### 发布文档
+
+1. 打开要发布的笔记
+2. 点击 Ribbon 图标 📤 或使用命令面板 `发布当前笔记到 VuePress`
+3. 在发布管理面板中查看发布状态
+
+### 拉取文档
+
+1. 点击 Ribbon 图标 ⬇️ 或使用命令面板 `从云端拉取文档`
+2. 在文档树中浏览云端文档结构
+3. 选择文档预览后下载到本地
+
+### 同步管理
+
+1. 点击 Ribbon 图标 🔄 打开同步管理面板
+2. 查看所有同步任务的状态
+3. 管理冲突和同步进度
+
+### 站点图谱
+
+1. 点击 Ribbon 图标 🌐 打开全局站点图谱
+2. 或使用命令面板 `打开当前文件局部图谱`
+3. 可视化查看文档之间的关系
+
+### 插入同步标记
+
+在编辑器中右键点击：
+
+- **插入行内同步模板** - 插入行内标记，关联站点内容
+- **插入块级同步模板** - 插入代码块标记，关联站点内容块
+
+## 命令列表
+
+| 命令                    | 说明                     |
+| ----------------------- | ------------------------ |
+| 发布当前笔记到 VuePress | 发布当前打开的笔记       |
+| 打开发布管理面板        | 打开侧边栏发布面板       |
+| 同步当前笔记            | 同步当前笔记的块级内容   |
+| 同步所有笔记            | 批量同步所有笔记         |
+| 从云端拉取文档          | 打开文档拉取面板         |
+| 打开同步管理面板        | 打开同步管理视图         |
+| 打开站点图谱            | 打开全局站点图谱         |
+| 打开当前文件局部图谱    | 打开当前文件的局部图谱   |
+| 编辑站点配置            | 打开配置编辑器           |
+| 同步 Bridge 产物        | 手动同步站点 Bridge 资源 |
+| 加载 VuePress 样式      | 手动加载站点样式         |
+
+## 技术架构
+
+```
+src/
+├── sync/           # 同步核心逻辑
+│   ├── SyncManager        # 同步管理器
+│   ├── DocumentTreeService # 文档树服务
+│   ├── GitHubApi          # GitHub API 封装
+│   ├── PathMapper         # 路径映射
+│   └── PublishStatusChecker # 发布状态检查
+├── ui/             # 用户界面
+│   ├── vue/               # Vue 组件（移动端）
+│   ├── PublishModal       # 发布弹窗
+│   ├── PullDocumentModal  # 拉取文档弹窗
+│   ├── DocSyncPanel       # 同步面板
+│   └── ViewManager        # 视图管理器
+├── bridge/         # Bridge 系统（一致性渲染核心）
+│   ├── BridgeManager      # Bridge 管理器
+│   └── SyntaxRegistry     # 语法注册表
+├── bigraph/        # 站点图谱
+│   └── BiGraphService     # 图谱服务
+├── preview/        # 预览渲染
+│   ├── StyleInjector      # 样式注入
+│   └── SyncBlockRenderer  # 同步块渲染
+└── utils/          # 工具函数
+    ├── Logger             # 日志系统
+    ├── TaskTracker        # 任务追踪
+    └── UpdateChecker      # 更新检查
 ```
 
-If you have multiple URLs, you can also do:
+## 开发
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
+```bash
+# 安装依赖
+bun install
+
+# 开发模式（监听文件变化）
+bun run dev
+
+# 构建生产版本
+bun run build
 ```
 
-## API Documentation
+## 更新日志
 
-See https://github.com/obsidianmd/obsidian-api
+查看 [GitHub Releases](https://github.com/Hi-Sillot/obsidian/releases) 获取最新版本信息。
