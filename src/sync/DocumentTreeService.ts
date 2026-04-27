@@ -201,9 +201,13 @@ export class DocumentTreeService {
 	}
 
 	async loadChildren(path: string, source: PullSource): Promise<DocTreeNode[]> {
+		console.log('[DocumentTreeService] loadChildren 调用:', { path, sourceType: source.type, source });
+		
 		if (source.type === 'github') {
 			const branch = source.branch;
+			console.log('[DocumentTreeService] 使用 GitHub API 加载:', { path, branch });
 			const items = await this.githubApi.listDirectory(path, branch);
+			console.log('[DocumentTreeService] GitHub API 返回:', { count: items.length, items });
 			return items.map(item => ({
 				path: item.path,
 				name: item.name,
@@ -219,15 +223,19 @@ export class DocumentTreeService {
 
 		// site 类型：从本地缓存的 pathMap 中查找子节点
 		if (source.type === 'site' && this.pathMap?.entries?.length) {
+			console.log('[DocumentTreeService] 使用 pathMap 加载:', { path });
 			const children = this.findChildrenInPathMap(path);
+			console.log('[DocumentTreeService] pathMap 返回:', { count: children.length, children });
 			if (children.length > 0) return children;
 		}
 
 		// 回退到 GitHub API
 		if (this.githubApi) {
 			const branch = source.branch || 'main';
+			console.log('[DocumentTreeService] 回退到 GitHub API:', { path, branch });
 			try {
 				const items = await this.githubApi.listDirectory(path, branch);
+				console.log('[DocumentTreeService] 回退 GitHub API 返回:', { count: items.length, items });
 				return items.map(item => ({
 					path: item.path,
 					name: item.name,
@@ -239,11 +247,13 @@ export class DocumentTreeService {
 					if (a.type === b.type) return a.name.localeCompare(b.name);
 					return a.type === 'directory' ? -1 : 1;
 				});
-			} catch {
+			} catch (error) {
+				console.error('[DocumentTreeService] 回退 GitHub API 失败:', error);
 				return [];
 			}
 		}
 
+		console.warn('[DocumentTreeService] 无法加载子节点，返回空数组');
 		return [];
 	}
 

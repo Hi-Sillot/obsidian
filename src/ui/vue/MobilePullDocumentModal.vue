@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick, onUnmounted } from 'vue';
-import { Notice, MarkdownRenderer, Component } from 'obsidian';
+import { ref, onMounted, watch, onUnmounted } from 'vue';
+import { Notice } from 'obsidian';
 import { CloseIcon } from 'tdesign-icons-vue-next';
 import { useThemeSync } from './composables/useThemeSync';
+import { useDocumentTree } from './composables/useDocumentTree';
+import { usePreview } from './composables/usePreview';
 import type { DocumentTreeService } from '../../sync/DocumentTreeService';
-import type { DocTreeNode, PullSource, LocalExistenceResult } from '../../types';
+import type { PullSource } from '../../types';
 import type { PermalinkIndexEntry } from '../../bridge/types';
 
 interface Props {
@@ -21,42 +23,16 @@ interface Props {
 
 const props = defineProps<Props>();
 
-// 使用统一的主题同步系统
 const { isDark } = useThemeSync();
 
-// 标签页状态
 const activeTab = ref('select');
-
-// 文档树状态
-const treeData = ref<any[]>([]);
-const isLoadingTree = ref(false);
-const expandedKeys = ref<string[]>([]);
-const loadedPaths = ref<Set<string>>(new Set());
-
-// 选择和预览状态
-const selectedPath = ref<string | null>(null);
-const selectedSource = ref<PullSource | null>(null);
-const previewContent = ref<string | null>(null);
-const previewError = ref<string | null>(null); // 预览错误信息
-const localExistence = ref<LocalExistenceResult | null>(null);
-const localSavePath = ref('');
-const isLoadingPreview = ref(false);
-const isRenderedMode = ref(true);
-const pathExpanded = ref(false);
-const renderedEl = ref<HTMLElement | null>(null);
-
-// URL 解析状态
+const pattern = ref('');
 const urlInputValue = ref('');
 const isParsingUrl = ref(false);
 const isDownloading = ref(false);
-const pattern = ref('');
+const selectedPath = ref<string | null>(null);
+const pathExpanded = ref(false);
 
-// Markdown 渲染器
-const renderComponent = new Component();
-renderComponent.load();
-let lastRenderedKey = '';
-
-// 数据源
 const defaultSource = (): PullSource => ({
   type: 'github',
   baseUrl: props.githubRepo,
@@ -64,94 +40,23 @@ const defaultSource = (): PullSource => ({
   docsDir: props.docsDir,
 });
 
-// 文档树转换
-const convertDocTreeToOptions = (nodes: DocTreeNode[]): any[] =>
-  nodes.map(node => ({
-    label: node.name,
-    value: node.path,
-    isLeaf: node.type === 'file',
-    children: node.type === 'directory' ? [] : undefined,
-  }));
+const { treeNodes, isLoadingTree, selectedSource, loadDocumentTree, toggleNode } = useDocumentTree(props.documentTreeService);
+const { previewContent, previewError, localExistence, localSavePath, isLoadingPreview, isRenderedMode, renderedEl, renderComponent, loadPreview, tryRenderPreview } = usePreview(props.documentTreeService, props.obsidianApp);
 
-// 文档树加载
-const loadDocumentTree = async () => {
-  isLoadingTree.value = true;
-  try {
-    const source = defaultSource();
-    const tree = await props.documentTreeService.fetchDocTree(source);
-    selectedSource.value = source;
-    loadedPaths.value.add(tree.path);
-    if (tree.children) {
-      treeData.value = convertDocTreeToOptions(tree.children);
-    }
-  } catch {
-    new Notice('加载文档树失败');
-  } finally {
-    isLoadingTree.value = false;
-  }
-};
-
-const loadChildren = async (path: string, parentNode: any) => {
-  if (!selectedSource.value) return;
-
-  try {
-    const children = await props.documentTreeService.loadChildren(path, selectedSource.value);
-    parentNode.children = convertDocTreeToOptions(children);
-    children.forEach((child: DocTreeNode) => {
-      if (child.type === 'directory') {
-        loadedPaths.value.add(child.path);
-      }
-    });
-  } catch (error) {
-    console.error('[MobilePullDocModal] 加载子节点失败:', error);
-  }
-};
-
-// 预览加载
-const loadPreview = async (path: string, source: PullSource) => {
-  isLoadingPreview.value = true;
-  previewError.value = null; // 清除之前的错误
-  try {
-    previewContent.value = await props.documentTreeService.previewDocument(path, source);
-    localExistence.value = await props.documentTreeService.checkLocalExistence(path);
-    if (!localSavePath.value && localExistence.value?.localPath) {
-      localSavePath.value = localExistence.value.localPath;
-    }
-  } catch (error) {
-    previewContent.value = null;
-    // 设置错误信息供显示
-    previewError.value = error instanceof Error ? error.message : '加载预览失败';
-    console.error('[MobilePullDocModal] 加载预览失败:', error);
-  } finally {
-    isLoadingPreview.value = false;
-  }
-};
-
-// 节点点击处理
-const handleNodeClick = async (node: any) => {
+const selectNode = async (node: any) => {
   if (!node.isLeaf) {
-    // 展开/折叠目录
-    const isExpanded = expandedKeys.value.includes(node.value);
-    if (isExpanded) {
-      expandedKeys.value = expandedKeys.value.filter(k => k !== node.value);
-    } else {
-      if (!loadedPaths.value.has(node.value)) {
-        await loadChildren(node.value, node);
-      }
-      expandedKeys.value = [...expandedKeys.value, node.value];
-    }
-  } else {
-    // 选择文件
-    selectedPath.value = node.value;
-    activeTab.value = 'preview';
-    pathExpanded.value = false;
-    selectedSource.value = defaultSource();
-    localSavePath.value = props.documentTreeService.analyzeSavePath(node.value, props.vaultRoot);
-    await loadPreview(node.value, selectedSource.value);
+    await toggleNode(node);
+    return;
   }
+
+  selectedPath.value = node.path;
+  activeTab.value = 'preview';
+  pathExpanded.value = false;
+  selectedSource.value = defaultSource();
+  localSavePath.value = props.documentTreeService.analyzeSavePath(node.path, props.vaultRoot);
+  await loadPreview(node.path, selectedSource.value);
 };
 
-// URL 解析
 const handleUrlParse = async () => {
   const url = urlInputValue.value.trim();
   if (!url) return;
@@ -165,10 +70,7 @@ const handleUrlParse = async () => {
       selectedSource.value = result.source;
       localSavePath.value = props.documentTreeService.analyzeSavePath(result.path, props.vaultRoot);
       await loadPreview(result.path, result.source);
-
-      if (result.title) {
-        new Notice(`已定位：${result.title}`);
-      }
+      if (result.title) new Notice(`已定位：${result.title}`);
     } else {
       new Notice('无法解析该 URL');
     }
@@ -177,7 +79,6 @@ const handleUrlParse = async () => {
   }
 };
 
-// 搜索处理
 const handleSearch = () => {
   const query = pattern.value.trim();
   if (!query) return;
@@ -207,9 +108,7 @@ const handleSearch = () => {
   const priority: Record<string, number> = { '标题': 0, '链接': 1, '路径': 2, '集合': 3 };
   results.sort((a, b) => (priority[a.matchedField] ?? 9) - (priority[b.matchedField] ?? 9));
 
-  if (results.length > 0) {
-    handleSearchResultSelect(results[0]);
-  }
+  if (results.length > 0) handleSearchResultSelect(results[0]);
 };
 
 const handleSearchResultSelect = async (entry: PermalinkIndexEntry) => {
@@ -223,7 +122,6 @@ const handleSearchResultSelect = async (entry: PermalinkIndexEntry) => {
   await loadPreview(cloudPath, selectedSource.value);
 };
 
-// 下载处理
 const handleDownload = async () => {
   if (!selectedPath.value || !selectedSource.value || !localSavePath.value) {
     new Notice('请先选择要下载的文档');
@@ -239,50 +137,8 @@ const handleDownload = async () => {
   }
 };
 
-const handleClose = () => props.onClose();
-
-// Markdown 渲染
-const escapeHtml = (text: string): string =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-const renderWithObsidian = async (content: string, el: HTMLElement) => {
-  try {
-    el.innerHTML = '';
-    await MarkdownRenderer.render(props.obsidianApp, content, el, '', renderComponent);
-  } catch {
-    el.innerHTML = `<pre style="white-space:pre-wrap">${escapeHtml(content)}</pre>`;
-  }
-};
-
-const tryRenderPreview = async (content: string) => {
-  if (!content || !isRenderedMode.value) return;
-
-  const renderKey = `rendered::${content.substring(0, 100)}`;
-  if (renderKey === lastRenderedKey) return;
-  lastRenderedKey = renderKey;
-
-  let retries = 0;
-  const maxRetries = 5;
-
-  const attemptRender = async () => {
-    await nextTick();
-    if (renderedEl.value) {
-      await renderWithObsidian(content, renderedEl.value);
-    } else if (retries < maxRetries) {
-      retries++;
-      setTimeout(attemptRender, 50);
-    }
-  };
-
-  attemptRender();
-};
-
-// 监听
 watch([previewContent, isRenderedMode], async ([content, rendered]) => {
-  if (rendered && content) {
-    lastRenderedKey = '';
-    await tryRenderPreview(content);
-  }
+  if (rendered && content) await tryRenderPreview(content);
 });
 
 watch(isDark, (dark) => {
@@ -290,8 +146,7 @@ watch(isDark, (dark) => {
 });
 
 onMounted(async () => {
-  await nextTick();
-  await loadDocumentTree();
+  await loadDocumentTree(defaultSource());
 });
 
 onUnmounted(() => {
@@ -301,11 +156,11 @@ onUnmounted(() => {
 
 <template>
   <div class="mobile-pull-doc-wrapper" :class="{ 'is-dark': isDark }">
-    <div class="mobile-overlay" @click.self="handleClose">
+    <div class="mobile-overlay" @click.self="onClose">
       <div class="mobile-panel">
         <div class="panel-header">
           <span class="panel-title">从云端拉取文档</span>
-          <t-button variant="text" size="small" class="close-btn" @click="handleClose">
+          <t-button variant="text" size="small" class="close-btn" @click="onClose">
             <CloseIcon />
           </t-button>
         </div>
@@ -321,13 +176,7 @@ onUnmounted(() => {
               </template>
 
               <div class="select-content">
-                <t-input
-                  v-model="pattern"
-                  placeholder="搜索文档..."
-                  clearable
-                  class="search-input"
-                  @input="handleSearch"
-                />
+                <t-input v-model="pattern" placeholder="搜索文档..." clearable class="search-input" @input="handleSearch" />
 
                 <div v-if="isLoadingTree" class="loading-container">
                   <t-loading size="medium" />
@@ -335,49 +184,24 @@ onUnmounted(() => {
                 </div>
 
                 <div v-else class="doc-tree">
-                  <template v-for="node in treeData" :key="node.value">
-                    <div
-                      class="tree-node"
-                      @click="handleNodeClick(node)"
-                    >
-                      <span
-                        v-if="!node.isLeaf"
-                        class="expand-icon"
-                        :class="{ expanded: expandedKeys.includes(node.value) }"
-                      >▶</span>
-                      <span v-else class="expand-placeholder"></span>
-                      <span>{{ node.isLeaf ? '📄' : '📁' }}</span>
-                      <span class="tree-label">{{ node.label }}</span>
-                    </div>
-                    <template v-if="!node.isLeaf && expandedKeys.includes(node.value) && node.children?.length">
-                      <div
-                        v-for="child in node.children"
-                        :key="child.value"
-                        class="tree-child-node"
-                        @click="handleNodeClick(child)"
-                      >
-                        <span>{{ child.isLeaf ? '📄' : '📁' }}</span>
-                        <span class="tree-label">{{ child.label }}</span>
-                      </div>
-                    </template>
-                  </template>
+                  <div
+                    v-for="node in treeNodes"
+                    :key="node.path"
+                    class="tree-node"
+                    :style="{ paddingLeft: (node.level * 16 + 12) + 'px' }"
+                    @click="selectNode(node)"
+                  >
+                    <span v-if="!node.isLeaf" class="expand-icon" :class="{ expanded: node.expanded }">▶</span>
+                    <span v-else class="expand-placeholder"></span>
+                    <span>{{ node.isLeaf ? '📄' : '📁' }}</span>
+                    <span class="tree-label">{{ node.name }}</span>
+                  </div>
                 </div>
 
                 <t-divider class="section-divider" />
 
-                <t-input
-                  v-model="urlInputValue"
-                  placeholder="粘贴文档链接..."
-                  class="url-input"
-                  @keyup.enter="handleUrlParse"
-                />
-                <t-button
-                  :loading="isParsingUrl"
-                  class="parse-btn"
-                  @click="handleUrlParse"
-                >
-                  解析
-                </t-button>
+                <t-input v-model="urlInputValue" placeholder="粘贴文档链接..." class="url-input" @keyup.enter="handleUrlParse" />
+                <t-button :loading="isParsingUrl" class="parse-btn" @click="handleUrlParse">解析</t-button>
                 <t-text class="url-hint">支持 GitHub 文件链接、Raw 链接、站点文档链接</t-text>
               </div>
             </t-tab-panel>
@@ -439,15 +263,8 @@ onUnmounted(() => {
         </div>
 
         <div class="panel-footer">
-          <t-button variant="outline" class="cancel-btn" @click="handleClose">
-            取消
-          </t-button>
-          <t-button
-            :disabled="!selectedPath || !localSavePath || isDownloading"
-            :loading="isDownloading"
-            class="download-btn"
-            @click="handleDownload"
-          >
+          <t-button variant="outline" class="cancel-btn" @click="onClose">取消</t-button>
+          <t-button :disabled="!selectedPath || !localSavePath || isDownloading" :loading="isDownloading" class="download-btn" @click="handleDownload">
             {{ localExistence?.exists ? '下载/覆盖' : '下载文档' }}
           </t-button>
         </div>
@@ -457,7 +274,6 @@ onUnmounted(() => {
 </template>
 
 <style>
-/* CSS Variables */
 .mobile-pull-doc-wrapper {
   --td-brand-color: #1966ff;
   --td-brand-color-light: #e6eef8;
@@ -474,7 +290,6 @@ onUnmounted(() => {
   --border-color: #e0e0e0;
   --text-primary: #333333;
   --text-placeholder: #999999;
-
   position: fixed;
   top: 0;
   left: 0;
@@ -501,7 +316,6 @@ onUnmounted(() => {
   --text-placeholder: #6c7086;
 }
 
-/* Layout */
 .mobile-overlay {
   position: absolute;
   top: 0;
@@ -538,9 +352,7 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-.close-btn {
-  padding: 4px;
-}
+.close-btn { padding: 4px; }
 
 .panel-content {
   flex: 1;
@@ -555,10 +367,7 @@ onUnmounted(() => {
   border-top: 1px solid var(--border-color);
 }
 
-/* Tabs */
-.doc-tabs {
-  --td-tab-nav-bg-color: transparent;
-}
+.doc-tabs { --td-tab-nav-bg-color: transparent; }
 
 .tab-label {
   display: inline-flex;
@@ -566,14 +375,9 @@ onUnmounted(() => {
   gap: 4px;
 }
 
-/* Select Tab */
-.select-content {
-  margin-top: 12px;
-}
+.select-content { margin-top: 12px; }
 
-.search-input {
-  margin-bottom: 12px;
-}
+.search-input { margin-bottom: 12px; }
 
 .loading-container {
   display: flex;
@@ -594,8 +398,7 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.tree-node,
-.tree-child-node {
+.tree-node {
   padding: 12px;
   cursor: pointer;
   display: flex;
@@ -604,19 +407,13 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
-.tree-child-node {
-  padding: 10px 12px 10px 36px;
-}
-
 .expand-icon {
   transition: transform 0.2s;
   display: inline-block;
   color: var(--text-placeholder);
 }
 
-.expand-icon.expanded {
-  transform: rotate(90deg);
-}
+.expand-icon.expanded { transform: rotate(90deg); }
 
 .expand-placeholder {
   width: 16px;
@@ -628,17 +425,11 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-.section-divider {
-  margin: 16px 0;
-}
+.section-divider { margin: 16px 0; }
 
-.url-input {
-  margin-bottom: 12px;
-}
+.url-input { margin-bottom: 12px; }
 
-.parse-btn {
-  width: 100%;
-}
+.parse-btn { width: 100%; }
 
 .url-hint {
   font-size: 12px;
@@ -647,7 +438,6 @@ onUnmounted(() => {
   margin-top: 8px;
 }
 
-/* Preview Tab */
 .empty-preview {
   text-align: center;
   padding: 48px 24px;
@@ -691,13 +481,9 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
-.info-row.clickable {
-  cursor: pointer;
-}
+.info-row.clickable { cursor: pointer; }
 
-.info-row:last-child {
-  border-bottom: none;
-}
+.info-row:last-child { border-bottom: none; }
 
 .info-label-group {
   display: flex;
@@ -715,9 +501,7 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
-.expand-arrow.expanded {
-  transform: rotate(90deg);
-}
+.expand-arrow.expanded { transform: rotate(90deg); }
 
 .info-value {
   color: var(--text-primary);
@@ -731,13 +515,9 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.info-input {
-  padding-top: 8px;
-}
+.info-input { padding-top: 8px; }
 
-.preview-section {
-  margin-top: 16px;
-}
+.preview-section { margin-top: 16px; }
 
 .preview-header {
   display: flex;
@@ -760,75 +540,24 @@ onUnmounted(() => {
 }
 
 .source-preview {
-  padding: 12px;
-  font-family: Monaco, Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.5;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.6;
   white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
+  overflow-x: auto;
+  color: var(--text-primary);
 }
 
 .rendered-preview {
-  padding: 12px;
+  padding: 16px;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
 }
 
-.rendered-preview h1,
-.rendered-preview h2,
-.rendered-preview h3 {
-  margin-top: 1em;
-  margin-bottom: 0.5em;
-  font-weight: 600;
-}
+.rendered-preview img { max-width: 100%; }
 
-.rendered-preview p {
-  margin: 0.5em 0;
-}
+.cancel-btn { flex: 1; }
 
-.rendered-preview code {
-  background: var(--bg-secondary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: Monaco, Menlo, monospace;
-  font-size: 0.9em;
-}
-
-.rendered-preview pre {
-  background: var(--bg-secondary);
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-
-.rendered-preview pre code {
-  background: none;
-  padding: 0;
-}
-
-/* Footer Buttons */
-.cancel-btn,
-.download-btn {
-  flex: 1;
-}
-
-/* TDesign Overrides */
-.mobile-pull-doc-wrapper .t-tabs__item {
-  color: var(--text-placeholder);
-}
-
-.mobile-pull-doc-wrapper .t-tabs__item.t-is-active {
-  color: var(--td-brand-color);
-}
-
-.mobile-pull-doc-wrapper .t-tabs__track {
-  background-color: var(--td-brand-color);
-}
-
-.mobile-pull-doc-wrapper .t-button--variant-outline {
-  border-color: var(--border-color);
-  color: var(--text-primary);
-}
+.download-btn { flex: 2; }
 </style>
