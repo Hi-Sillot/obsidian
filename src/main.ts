@@ -498,6 +498,7 @@ export default class VuePressPublisherPlugin extends Plugin {
 				pathMap: assets.pathMap || null,
 				siteDomain: this.settings.siteDomain,
 				docsDir: this.settings.vuepressDocsDir,
+				assetMap: assets.assetMap || null,
 			});
 		}
 	}
@@ -620,21 +621,40 @@ export default class VuePressPublisherPlugin extends Plugin {
 
 				const mapper = new PathMapper({ docsDir: vuepressDocsDir, publishRootPath: this.settings.publishRootPath });
 
-				const mdContent = await this.app.vault.read(collected.md);
+				let mdContent = await this.app.vault.read(collected.md);
+
+				// 转换图片引用：Wiki 链接 → 标准 Markdown 相对路径
+				for (const asset of collected.assets) {
+					if (asset.refType === 'wiki') {
+						const relativeRef = mapper.getRelativeAssetRef(asset.file.path, collected.md.path);
+						const altText = asset.file.basename;
+						const mdImageRef = `![${altText}](${relativeRef})`;
+						mdContent = mdContent.replace(asset.originalRef, mdImageRef);
+					}
+				}
+
 				const mdTargetPath = mapper.mapMarkdownPath(collected.md.path, result.customPublishPath);
 				const publishFiles: { path: string; content: string }[] = [
 					{ path: mdTargetPath, content: btoa(unescape(encodeURIComponent(mdContent))) },
 				];
 
 				for (const asset of collected.assets) {
-					const assetData = await this.app.vault.readBinary(asset);
-					const assetTargetPath = mapper.mapAssetPath(asset.path, result.customPublishPath);
+					const assetData = await this.app.vault.readBinary(asset.file);
+					const assetTargetPath = mapper.mapAssetPathAlongsideMd(
+						asset.file.path,
+						collected.md.path,
+						result.customPublishPath
+					);
 					let binary = '';
 					const bytes = new Uint8Array(assetData);
 					for (let i = 0; i < bytes.length; i++) {
 						binary += String.fromCharCode(bytes[i]);
 					}
 					publishFiles.push({ path: assetTargetPath, content: btoa(binary) });
+				}
+
+				if (collected.siteAssetRefs.length > 0) {
+					this.logger.debug('Publish', `站点级资源引用（无需上传）: ${collected.siteAssetRefs.join(', ')}`);
 				}
 
 				this.taskTracker.updateTask(taskId, 10, `上传 ${file.name} 到 GitHub...`);

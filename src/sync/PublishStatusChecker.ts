@@ -2,6 +2,7 @@ import { App, TFile, Platform, requestUrl } from 'obsidian';
 import type { FilePublishInfo, PublishStatus, DiffResult, DiffLine, DiffCompareSource } from '../types';
 import type { PathMapEntry } from '../bridge/types';
 import type { Logger } from '../utils/Logger';
+import { FileCollector } from './fileCollector';
 
 const TAG = 'PublishStatus';
 
@@ -437,6 +438,10 @@ export class PublishStatusChecker {
 			const dir = targetPath.substring(0, targetPath.lastIndexOf(sep));
 			await fs.mkdir(dir, { recursive: true });
 			await fs.writeFile(targetPath, content, 'utf-8');
+
+			// 收集并拷贝引用的图片资源
+			await this.copyReferencedAssets(file, content, filePath, sep);
+
 			this.invalidatePublishIdIndex();
 			this.logger?.info(TAG, `本地发布成功: ${targetPath}`);
 			return true;
@@ -507,6 +512,10 @@ export class PublishStatusChecker {
 			const dir = targetPath.substring(0, targetPath.lastIndexOf(sep));
 			await fs.mkdir(dir, { recursive: true });
 			await fs.writeFile(targetPath, content, 'utf-8');
+
+			// 收集并拷贝引用的图片资源
+			await this.copyReferencedAssets(file, content, filePath, sep);
+
 			this.invalidatePublishIdIndex();
 			this.logger?.info(TAG, `本地发布成功: ${targetPath}`);
 			return true;
@@ -514,6 +523,64 @@ export class PublishStatusChecker {
 			this.logger?.error(TAG, `本地发布失败: ${targetPath}`, e.message);
 			throw e;
 		}
+	}
+
+	/**
+	 * 收集文档引用的图片资源并拷贝到目标目录
+	 * 保持相对于源文件的目录结构，使相对路径引用有效
+	 */
+	private async copyReferencedAssets(
+		file: TFile,
+		_content: string,
+		filePath: string,
+		sep: string
+	): Promise<void> {
+		try {
+			const collector = new FileCollector(this.app.vault, this.app.metadataCache);
+			const collected = await collector.collectForPublish(file);
+
+			if (collected.assets.length === 0) return;
+
+			const fs = require('fs/promises') as typeof import('fs/promises');
+			const sourceDir = file.parent?.path || '';
+			// 目标 markdown 所在目录
+			const mdTargetDir = filePath.substring(0, filePath.lastIndexOf('/'));
+
+			for (const asset of collected.assets) {
+				const assetData = await this.app.vault.readBinary(asset.file);
+				// 计算 asset 相对于源文件目录的路径，保持子目录结构
+				const assetRelPath = this.computeAssetRelPath(sourceDir, asset.file.path);
+				const assetTargetPath = `${this.localVuePressRoot}${sep}${mdTargetDir.replace(/\//g, sep)}${sep}${assetRelPath.replace(/\//g, sep)}`;
+				const assetTargetDir = assetTargetPath.substring(0, assetTargetPath.lastIndexOf(sep));
+
+				await fs.mkdir(assetTargetDir, { recursive: true });
+				await fs.writeFile(assetTargetPath, Buffer.from(assetData));
+				this.logger?.debug(TAG, `已拷贝图片: ${assetRelPath} → ${assetTargetPath}`);
+			}
+		} catch (e) {
+			this.logger?.warn(TAG, `图片拷贝失败（非致命）: ${(e as Error).message}`);
+		}
+	}
+
+	/**
+	 * 计算 assetPath 相对于 sourceDir 的相对路径
+	 */
+	private computeAssetRelPath(sourceDir: string, assetPath: string): string {
+		if (!sourceDir) return assetPath;
+
+		const srcParts = sourceDir.split('/');
+		const assetParts = assetPath.split('/');
+
+		let commonLen = 0;
+		while (
+			commonLen < srcParts.length &&
+			commonLen < assetParts.length &&
+			srcParts[commonLen] === assetParts[commonLen]
+		) {
+			commonLen++;
+		}
+
+		return assetParts.slice(commonLen).join('/');
 	}
 
 	async getPublishedContent(file: TFile): Promise<string | null> {

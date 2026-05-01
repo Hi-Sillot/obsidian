@@ -415,13 +415,27 @@ export class PublishPanelView extends ItemView {
 			const allPublishFiles: { path: string; content: string }[] = [];
 			for (const file of files) {
 				const collected = await collector.collectForPublish(file);
-				const mdContent = await this.plugin.app.vault.read(collected.md);
+				let mdContent = await this.plugin.app.vault.read(collected.md);
+
+				// 转换图片引用：Wiki 链接 → 标准 Markdown 相对路径
+				for (const asset of collected.assets) {
+					if (asset.refType === 'wiki') {
+						const relativeRef = mapper.getRelativeAssetRef(asset.file.path, collected.md.path);
+						const altText = asset.file.basename;
+						const mdImageRef = `![${altText}](${relativeRef})`;
+						mdContent = mdContent.replace(asset.originalRef, mdImageRef);
+					}
+				}
+
 				const mdTargetPath = mapper.mapMarkdownPath(collected.md.path);
 				allPublishFiles.push({ path: mdTargetPath, content: btoa(unescape(encodeURIComponent(mdContent))) });
 
 				for (const asset of collected.assets) {
-					const assetData = await this.plugin.app.vault.readBinary(asset);
-					const assetTargetPath = mapper.mapAssetPath(asset.path);
+					const assetData = await this.plugin.app.vault.readBinary(asset.file);
+					const assetTargetPath = mapper.mapAssetPathAlongsideMd(
+						asset.file.path,
+						collected.md.path
+					);
 					let binary = '';
 					const bytes = new Uint8Array(assetData);
 					for (let i = 0; i < bytes.length; i++) {
@@ -721,13 +735,27 @@ export class PublishPanelView extends ItemView {
 			let packed = 0;
 			for (const file of files) {
 				const collected = await collector.collectForPublish(file);
-				const mdContent = await this.plugin.app.vault.read(collected.md);
+				let mdContent = await this.plugin.app.vault.read(collected.md);
+
+				// 转换图片引用：Wiki 链接 → 标准 Markdown 相对路径
+				for (const asset of collected.assets) {
+					if (asset.refType === 'wiki') {
+						const relativeRef = mapper.getRelativeAssetRef(asset.file.path, collected.md.path);
+						const altText = asset.file.basename;
+						const mdImageRef = `![${altText}](${relativeRef})`;
+						mdContent = mdContent.replace(asset.originalRef, mdImageRef);
+					}
+				}
+
 				const mdTargetPath = mapper.mapMarkdownPath(collected.md.path);
 				zip.file(mdTargetPath, mdContent);
 
 				for (const asset of collected.assets) {
-					const assetData = await this.plugin.app.vault.readBinary(asset);
-					const assetTargetPath = mapper.mapAssetPath(asset.path);
+					const assetData = await this.plugin.app.vault.readBinary(asset.file);
+					const assetTargetPath = mapper.mapAssetPathAlongsideMd(
+						asset.file.path,
+						collected.md.path
+					);
 					zip.file(assetTargetPath, assetData);
 				}
 				packed++;

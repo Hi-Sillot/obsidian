@@ -377,10 +377,18 @@
 
 .sillot-doc-sync-panel-container {
 	border-top: 1px solid var(--background-modifier-border);
-	padding: 8px 16px;
+	padding: 0;
 	background: var(--background-secondary);
-	position: relative;
 	flex-shrink: 0;
+}
+
+.sillot-doc-sync-panel-container:has(.sillot-doc-sync-panel--expanded) {
+	flex: 1;
+	min-height: 0;
+}
+
+.sillot-doc-sync-panel {
+	position: relative;
 }
 
 .workspace-leaf-content:has(.sillot-doc-sync-panel-container) {
@@ -398,6 +406,23 @@
 	padding: 4px 16px;
 }
 
+.sillot-doc-sync-panel--default {
+	display: flex;
+	flex-direction: column;
+	max-height: 360px;
+	padding: 8px 16px;
+}
+
+.sillot-doc-sync-panel--default .sillot-doc-sync-panel-tab-content {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.sillot-doc-sync-panel--default .sillot-doc-sync-panel-tab-content--audit {
+	overflow: hidden;
+}
+
 .sillot-doc-sync-panel--expanded {
 	display: flex;
 	flex-direction: column;
@@ -412,8 +437,12 @@
 
 .sillot-doc-sync-panel--expanded .sillot-doc-sync-panel-tab-content {
 	flex: 1;
-	overflow-y: auto;
 	min-height: 0;
+	overflow-y: auto;
+}
+
+.sillot-doc-sync-panel--expanded .sillot-doc-sync-panel-tab-content--audit {
+	overflow: hidden;
 }
 
 .sillot-doc-sync-panel-minimized-wrapper {
@@ -3162,6 +3191,56 @@
 }
 
 /* Image Enhancement - Figure */
+
+/* Audit Source Preview */
+.sillot-doc-sync-panel-audit-source {
+	flex: 1;
+	overflow-y: auto;
+	min-height: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	font-family: var(--font-monospace);
+	font-size: 12px;
+	line-height: 1.6;
+	user-select: text;
+}
+
+.sillot-doc-sync-panel-audit-source-line {
+	display: flex;
+	align-items: stretch;
+	min-height: 20px;
+}
+
+.sillot-doc-sync-panel-audit-source-line--problem {
+	background: rgba(var(--text-warning-rgb, 255, 152, 0), 0.12);
+	border-left: 3px solid var(--text-warning, #ff9800);
+}
+
+.sillot-doc-sync-panel-audit-source-line--normal {
+	background: transparent;
+}
+
+.sillot-doc-sync-panel-audit-source-ln {
+	display: inline-block;
+	min-width: 40px;
+	padding: 0 8px;
+	text-align: right;
+	color: var(--text-faint);
+	background: var(--background-secondary);
+	border-right: 1px solid var(--background-modifier-border);
+	user-select: none;
+	flex-shrink: 0;
+}
+
+.sillot-doc-sync-panel-audit-source-text {
+	padding: 0 8px;
+	white-space: pre-wrap;
+	word-break: break-all;
+	flex: 1;
+	min-width: 0;
+	color: var(--text-normal);
+}
 
 
 /* ============================================

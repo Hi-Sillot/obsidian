@@ -187,7 +187,10 @@ export function createPullDocModal(options: PullDocModalOptions): {
 
 		isLoadingPreview.value = true;
 		try {
-			previewContent.value = await options.documentTreeService.previewDocument(cloudPath, selectedSource.value);
+			const raw = await options.documentTreeService.previewDocument(cloudPath, selectedSource.value);
+			previewContent.value = raw
+				? options.documentTreeService.preparePreviewContent(raw, cloudPath, selectedSource.value!)
+				: null;
 			localExistence.value = await options.documentTreeService.checkLocalExistence(cloudPath);
 			if (!localSavePath.value && localExistence.value?.localPath) {
 				localSavePath.value = localExistence.value.localPath;
@@ -270,7 +273,10 @@ export function createPullDocModal(options: PullDocModalOptions): {
 		// 加载预览
 		isLoadingPreview.value = true;
 		try {
-			previewContent.value = await options.documentTreeService.previewDocument(path, selectedSource.value);
+			const raw = await options.documentTreeService.previewDocument(path, selectedSource.value);
+			previewContent.value = raw
+				? options.documentTreeService.preparePreviewContent(raw, path, selectedSource.value!)
+				: null;
 			localExistence.value = await options.documentTreeService.checkLocalExistence(path);
 			if (!localSavePath.value && localExistence.value?.localPath) {
 				localSavePath.value = localExistence.value.localPath;
@@ -320,7 +326,10 @@ export function createPullDocModal(options: PullDocModalOptions): {
 
 				isLoadingPreview.value = true;
 				try {
-					previewContent.value = await options.documentTreeService.previewDocument(result.path, result.source);
+					const raw = await options.documentTreeService.previewDocument(result.path, result.source);
+					previewContent.value = raw
+						? options.documentTreeService.preparePreviewContent(raw, result.path, result.source)
+						: null;
 					localExistence.value = await options.documentTreeService.checkLocalExistence(result.path);
 					if (!localSavePath.value && localExistence.value?.localPath) {
 						localSavePath.value = localExistence.value.localPath;

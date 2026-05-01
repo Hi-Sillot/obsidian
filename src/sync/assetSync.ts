@@ -1,6 +1,7 @@
 import { Vault, TFile, requestUrl } from 'obsidian';
 import { GitHubApi } from './githubApi';
 import type { Logger } from '../utils/Logger';
+import type { AssetMapData } from '../bridge/types';
 
 export interface AssetReference {
 	originalPath: string; // Markdown 中的原始路径（如 ./Develocity.webp）
@@ -43,12 +44,17 @@ export class AssetSyncService {
 	private logger: Logger | null;
 	private md5Cache: MD5Cache = {};
 	private cacheFilePath = '.sillot/asset-md5-cache.json';
+	private assetMap: AssetMapData | null = null;
 
 	constructor(vault: Vault, githubApi: GitHubApi, docsDir: string = 'docs', logger?: Logger) {
 		this.vault = vault;
 		this.githubApi = githubApi;
 		this.docsDir = docsDir;
 		this.logger = logger || null;
+	}
+
+	setAssetMap(assetMap: AssetMapData | null): void {
+		this.assetMap = assetMap;
 	}
 
 	async loadMD5Cache(): Promise<void> {
@@ -124,31 +130,73 @@ export class AssetSyncService {
 
 		switch (asset.type) {
 			case 'relative':
-				// 相对路径：基于文档所在目录解析
 				if (asset.originalPath.startsWith('./') || asset.originalPath.startsWith('../')) {
 					const resolved = this.resolveRelativePath(docDir, asset.originalPath);
 					asset.resolvedPath = resolved;
-					// 返回本地路径
 					return this.resolveRelativePath(localDocDir, asset.originalPath);
 				} else {
-					// 简单相对路径（如 Develocity.webp）
 					asset.resolvedPath = `${docDir}/${asset.originalPath}`;
 					return `${localDocDir}/${asset.originalPath}`;
 				}
 
-			case 'absolute':
-				// 绝对路径（以 / 开头）：基于 docsDir 解析
+			case 'absolute': {
+				// 绝对路径（以 / 开头，如 /assets/shots/xxx.png）
+				// 优先通过 assetMap 查找源文件在 GitHub 中的实际路径
+				const githubPath = this.resolveAbsolutePathViaAssetMap(asset.originalPath);
+				if (githubPath) {
+					asset.resolvedPath = githubPath;
+					// 本地保存路径：去掉 docsDir 前缀，保持相对目录结构
+					const docsPrefix = this.docsDir + '/';
+					if (githubPath.startsWith(docsPrefix)) {
+						return githubPath.substring(docsPrefix.length);
+					}
+					return githubPath;
+				}
+				// 回退：基于 docsDir 拼接
 				asset.resolvedPath = `${this.docsDir}${asset.originalPath}`;
-				return asset.originalPath.substring(1); // 去掉开头的 /
+				return asset.originalPath.substring(1);
+			}
 
 			case 'wiki':
-				// Wiki 链接：直接使用
 				asset.resolvedPath = `${docDir}/${asset.originalPath}`;
 				return `${localDocDir}/${asset.originalPath}`;
 
 			default:
 				return asset.originalPath;
 		}
+	}
+
+	/**
+	 * 通过 assetMap 将站点公开路径（如 /assets/xxx.png）解析为 GitHub 源文件路径
+	 * assetMap.map 的 key 是公开 URL 路径，value 是源文件相对路径
+	 */
+	private resolveAbsolutePathViaAssetMap(publicPath: string): string | null {
+		if (!this.assetMap?.map) return null;
+
+		// 规范化路径：确保以 / 开头
+		const normalizedPath = publicPath.startsWith('/') ? publicPath : '/' + publicPath;
+
+		// 直接匹配
+		if (this.assetMap.map[normalizedPath]) {
+			const sourceRelPath = this.assetMap.map[normalizedPath];
+			return `${this.docsDir}/${sourceRelPath}`;
+		}
+
+		// 尝试去掉尾部斜杠匹配
+		const withoutTrailingSlash = normalizedPath.replace(/\/$/, '');
+		if (withoutTrailingSlash !== normalizedPath && this.assetMap.map[withoutTrailingSlash]) {
+			const sourceRelPath = this.assetMap.map[withoutTrailingSlash];
+			return `${this.docsDir}/${sourceRelPath}`;
+		}
+
+		// 模糊匹配：查找以该路径开头的映射（处理带查询参数等情况）
+		for (const [key, value] of Object.entries(this.assetMap.map)) {
+			if (key === normalizedPath || key.startsWith(normalizedPath + '?')) {
+				return `${this.docsDir}/${value}`;
+			}
+		}
+
+		return null;
 	}
 
 	private resolveRelativePath(basePath: string, relativePath: string): string {

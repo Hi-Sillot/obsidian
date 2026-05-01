@@ -24,7 +24,41 @@ export class ImageEnhanceHandler extends BaseSyntaxHandler {
 	private static readonly SIZE_REGEX = /^=(\d*)(x)?(\d*)%?$/;
 
 	processInlineComponents(el: HTMLElement): void {
+		this.resolveAbsoluteImagePaths(el);
 		this.processAllImages(el);
+	}
+
+	/**
+	 * 将 /assets/ 等站点绝对路径图片重写为完整 URL
+	 * 通过 assetMap 查找带哈希的真实发布文件名，不改写原始文档
+	 */
+	private resolveAbsoluteImagePaths(el: HTMLElement): void {
+		const siteDomain = this.plugin.settings.siteDomain;
+		if (!siteDomain) return;
+
+		const baseUrl = siteDomain.replace(/\/+$/, '');
+		const assetMap = this.plugin.bridgeManager?.getAssetMap();
+
+		const images = el.querySelectorAll<HTMLImageElement>('img[src^="/"]');
+		images.forEach(img => {
+			const originalSrc = img.getAttribute('src');
+			if (!originalSrc) return;
+
+			// 从路径中提取文件名（如 /assets/shots/xxx.png → xxx.png）
+			const fileName = originalSrc.split('/').pop() || '';
+
+			// 通过 assetMap 查找带哈希的真实发布文件名
+			let publishedFileName = fileName;
+			if (assetMap?.map) {
+				const hashed = assetMap.map[fileName];
+				if (hashed) {
+					publishedFileName = hashed;
+				}
+			}
+
+			img.setAttribute('src', `${baseUrl}/assets/${publishedFileName}`);
+			img.setAttribute('data-original-src', originalSrc);
+		});
 	}
 
 	private processAllImages(el: HTMLElement): void {

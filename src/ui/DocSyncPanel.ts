@@ -4,16 +4,18 @@ import type { ParsedSyncBlock, PublishStatus, FilePublishInfo, DiffResult, DiffC
 import type { TaskTracker } from '../utils/TaskTracker';
 import { generatePublishId, setPublishIdInContent } from '../sync/PublishStatusChecker';
 import { MoveDocumentModal } from './MoveDocumentModal';
+import { DocumentAuditor, type AuditResult } from '../sync/DocumentAuditor';
 import {
 	createDocSyncPanelApp,
 	type DocSyncPanelAPI,
+	type AuditFixRecord,
 } from './vue/DocSyncPanelHelper';
 
 const PANEL_CONTAINER_CLASS = 'sillot-doc-sync-panel-container';
 
 type PanelState = 'minimized' | 'default' | 'expanded';
 type PublishDisplayMode = 'default' | 'expanded';
-type ActiveTab = 'sync' | 'publish' | 'components' | 'authors';
+type ActiveTab = 'sync' | 'publish' | 'components' | 'authors' | 'audit';
 
 export class DocSyncPanel implements DocSyncPanelAPI {
 	private plugin: VuePressPublisherPlugin;
@@ -33,6 +35,12 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 	private _syncBlocks: ParsedSyncBlock[] = [];
 	private _components: Array<{ tag: string; detail: string; line: number; ch: number }> = [];
 	private _footnoteInfo: { defCount: number; refCount: number; defs: Array<{ id: string; content: string; num: number; refCount: number }> } = { defCount: 0, refCount: 0, defs: [] };
+	private _auditor: DocumentAuditor = new DocumentAuditor();
+	private _auditResult: AuditResult | null = null;
+	private _documentContent: string = '';
+	private _fixHistory: AuditFixRecord[] = [];
+	private _batchIdCounter: number = 0;
+	private _isFixing = false;
 
 	constructor(plugin: VuePressPublisherPlugin) {
 		this.plugin = plugin;
@@ -163,11 +171,13 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 
 	private async renderPanel() {
 		if (!this.panelEl || !this.currentFile) return;
+		if (this._isFixing) return;
 
 		const gen = ++this.renderGen;
 
 		const content = await this.plugin.app.vault.read(this.currentFile);
 		if (gen !== this.renderGen) return;
+		this._documentContent = content;
 
 		const syncManager = this.plugin.syncManager;
 		const blocks = syncManager
@@ -198,7 +208,7 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 		}
 
 		if (!this.panelEl) return;
-		this.panelEl.className = `${PANEL_CONTAINER_CLASS} sillot-doc-sync-panel--${this.state}`;
+		this.panelEl.className = PANEL_CONTAINER_CLASS;
 
 		if (this.vueApp) {
 			this.vueApp.forceUpdate();
@@ -799,6 +809,159 @@ export class DocSyncPanel implements DocSyncPanelAPI {
 		} catch (e) {
 			this.plugin.logger?.error('DocSyncPanel', '加载作者列表失败', (e as Error).message);
 			return Promise.resolve([]);
+		}
+	}
+
+	getAuditResult(): AuditResult | null {
+		if (!this._auditResult) return null;
+		return { issues: [...this._auditResult.issues], checkedAt: this._auditResult.checkedAt };
+	}
+
+	getDocumentContent(): string {
+		return this._documentContent;
+	}
+
+	async runAudit(): Promise<void> {
+		if (!this.currentFile) return;
+		const content = await this.plugin.app.vault.read(this.currentFile);
+		this._auditResult = this._auditor.audit(content);
+		if (this.vueApp) {
+			this.vueApp.forceUpdate();
+		}
+	}
+
+	async fixAuditIssue(index: number): Promise<void> {
+		if (!this.currentFile || !this._auditResult) return;
+		const issue = this._auditResult.issues[index];
+		if (!issue) return;
+
+		this._isFixing = true;
+		try {
+			const content = await this.plugin.app.vault.read(this.currentFile);
+			const lines = content.split('\n');
+			const lineIdx = issue.line - 1;
+			if (lineIdx < 0 || lineIdx >= lines.length) return;
+
+			lines[lineIdx] = lines[lineIdx].replace(issue.original, issue.fixed);
+			await this.plugin.app.vault.modify(this.currentFile, lines.join('\n'));
+
+			const record: AuditFixRecord = {
+				timestamp: Date.now(),
+				filePath: this.currentFile.path,
+				line: issue.line,
+				original: issue.original,
+				fixed: issue.fixed,
+				batchId: ++this._batchIdCounter,
+			};
+			this._fixHistory.push(record);
+			await this.appendAuditLog(record);
+
+			this._auditResult.issues.splice(index, 1);
+		} finally {
+			this._isFixing = false;
+			await this.renderPanel();
+		}
+	}
+
+	async fixAllAuditIssues(): Promise<void> {
+		if (!this.currentFile || !this._auditResult) return;
+
+		this._isFixing = true;
+		try {
+			const content = await this.plugin.app.vault.read(this.currentFile);
+			const lines = content.split('\n');
+
+			const batchId = ++this._batchIdCounter;
+
+			for (const issue of this._auditResult.issues) {
+				const lineIdx = issue.line - 1;
+				if (lineIdx >= 0 && lineIdx < lines.length) {
+					lines[lineIdx] = lines[lineIdx].replace(issue.original, issue.fixed);
+					const record: AuditFixRecord = {
+						timestamp: Date.now(),
+						filePath: this.currentFile.path,
+						line: issue.line,
+						original: issue.original,
+						fixed: issue.fixed,
+						batchId,
+					};
+					this._fixHistory.push(record);
+					await this.appendAuditLog(record);
+				}
+			}
+
+			await this.plugin.app.vault.modify(this.currentFile, lines.join('\n'));
+			this._auditResult.issues = [];
+		} finally {
+			this._isFixing = false;
+			await this.renderPanel();
+		}
+	}
+
+	private getAuditLogPath(): string {
+		return '.obsidian/plugins/sillot/log/audit-fix.log';
+	}
+
+	private async appendAuditLog(record: AuditFixRecord): Promise<void> {
+		try {
+			const logPath = this.getAuditLogPath();
+			const dir = logPath.substring(0, logPath.lastIndexOf('/'));
+			const adapter = this.plugin.app.vault.adapter;
+			if (!(await adapter.exists(dir))) {
+				await adapter.mkdir(dir);
+			}
+			const line = JSON.stringify(record) + '\n';
+			let existing = '';
+			if (await adapter.exists(logPath)) {
+				existing = await adapter.read(logPath);
+			}
+			await adapter.write(logPath, existing + line);
+		} catch (e) {
+			this.plugin.logger?.error('DocSyncPanel', '写入审查修复日志失败', (e as Error).message);
+		}
+	}
+
+	getFixHistory(): AuditFixRecord[] {
+		return this._fixHistory;
+	}
+
+	async undoLastFix(): Promise<void> {
+		if (this._fixHistory.length === 0) return;
+
+		this._isFixing = true;
+		try {
+			const latestBatchId = this._fixHistory[this._fixHistory.length - 1].batchId;
+			const batchRecords: AuditFixRecord[] = [];
+
+			while (this._fixHistory.length > 0
+				&& this._fixHistory[this._fixHistory.length - 1].batchId === latestBatchId) {
+				batchRecords.push(this._fixHistory.pop()!);
+			}
+
+			const filesToReaudit = new Set<string>();
+
+			for (const record of batchRecords) {
+				const file = this.plugin.app.vault.getAbstractFileByPath(record.filePath);
+				if (!(file instanceof TFile)) continue;
+
+				const content = await this.plugin.app.vault.read(file);
+				const lines = content.split('\n');
+				const lineIdx = record.line - 1;
+				if (lineIdx < 0 || lineIdx >= lines.length) continue;
+
+				lines[lineIdx] = lines[lineIdx].replace(record.fixed, record.original);
+				await this.plugin.app.vault.modify(file, lines.join('\n'));
+				filesToReaudit.add(record.filePath);
+			}
+
+			new Notice(`已撤销 ${batchRecords.length} 条修复`);
+
+			if (this.currentFile && filesToReaudit.has(this.currentFile.path)) {
+				await this.runAudit();
+			}
+		} finally {
+			this._isFixing = false;
+			await this.renderPanel();
 		}
 	}
 }

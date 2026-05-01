@@ -5,7 +5,7 @@ import { PathMapper } from './pathMapper';
 import { AssetSyncService } from './assetSync';
 import { convertToPlumeFormat } from './PlumeConverter';
 import type { DocTreeNode, PullSource, PullDocumentRequest, PullDocumentResult, LocalExistenceResult } from '../types';
-import type { PermalinkIndexData, PathMapData } from '../bridge/types';
+import type { PermalinkIndexData, PathMapData, AssetMapData } from '../bridge/types';
 import type { Logger } from '../utils/Logger';
 
 export class DocumentTreeService {
@@ -16,6 +16,7 @@ export class DocumentTreeService {
 	private logger: Logger | null;
 	private permalinkIndex: PermalinkIndexData | null = null;
 	private pathMap: PathMapData | null = null;
+	private assetMap: AssetMapData | null = null;
 	private siteDomain: string = '';
 	private docsDir: string = '';
 
@@ -32,11 +33,16 @@ export class DocumentTreeService {
 		pathMap: PathMapData | null;
 		siteDomain?: string;
 		docsDir?: string;
+		assetMap?: AssetMapData | null;
 	}): void {
 		this.permalinkIndex = options.permalinkIndex;
 		this.pathMap = options.pathMap;
 		if (options.siteDomain !== undefined) this.siteDomain = options.siteDomain;
 		if (options.docsDir !== undefined) this.docsDir = options.docsDir;
+		if (options.assetMap !== undefined) {
+			this.assetMap = options.assetMap;
+			this.assetSync.setAssetMap(options.assetMap);
+		}
 	}
 
 	getPermalinkIndex(): PermalinkIndexData | null {
@@ -394,6 +400,102 @@ export class DocumentTreeService {
 		}
 
 		return null;
+	}
+
+	/**
+	 * 预处理预览内容：将图片引用路径转换为完整 URL，使预览中图片可显示
+	 * - /assets/xxx.png → 通过 assetMap 查找哈希 → https://{siteDomain}/assets/xxx-HASH.png
+	 * - ./image.png → GitHub raw URL
+	 */
+	preparePreviewContent(rawContent: string, cloudPath: string, source: PullSource): string {
+		let content = rawContent;
+
+		const siteBase = this.siteDomain ? this.siteDomain.replace(/\/+$/, '') : '';
+
+		// 处理 Markdown 图片 ![alt](path) 和 HTML <img src="path">
+		content = content.replace(
+			/!\[([^\]]*)\]\(([^)]+)\)/g,
+			(match, alt, imgPath) => {
+				const resolved = this.resolvePreviewImageUrl(imgPath.trim(), cloudPath, source, siteBase);
+				return `![${alt}](${resolved})`;
+			}
+		);
+
+		content = content.replace(
+			/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi,
+			(match, imgPath) => {
+				const resolved = this.resolvePreviewImageUrl(imgPath.trim(), cloudPath, source, siteBase);
+				return match.replace(imgPath, resolved);
+			}
+		);
+
+		return content;
+	}
+
+	private resolvePreviewImageUrl(imgPath: string, cloudPath: string, source: PullSource, siteBase: string): string {
+		// 已经是完整 URL，直接返回
+		if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
+			return imgPath;
+		}
+
+		// /assets/ 等站点级绝对路径 → 通过 assetMap 查找带哈希的真实发布 URL
+		if (imgPath.startsWith('/')) {
+			if (siteBase) {
+				const fileName = imgPath.split('/').pop() || '';
+				let publishedFileName = fileName;
+				if (this.assetMap?.map) {
+					const hashed = this.assetMap.map[fileName];
+					if (hashed) {
+						publishedFileName = hashed;
+					}
+				}
+				return `${siteBase}/assets/${publishedFileName}`;
+			}
+			// 无 siteDomain 时尝试用 GitHub raw URL
+			return this.buildGitHubRawUrl(imgPath, cloudPath, source);
+		}
+
+		// 相对路径 → GitHub raw URL
+		return this.buildGitHubRawUrl(imgPath, cloudPath, source);
+	}
+
+	private buildGitHubRawUrl(imgPath: string, cloudPath: string, source: PullSource): string {
+		if (source.type !== 'github') return imgPath;
+
+		const docDir = cloudPath.substring(0, cloudPath.lastIndexOf('/'));
+
+		let resolvedPath: string;
+		if (imgPath.startsWith('./') || imgPath.startsWith('../')) {
+			resolvedPath = this.resolveRelativePath(docDir, imgPath);
+		} else if (imgPath.startsWith('/')) {
+			resolvedPath = (this.docsDir || 'docs') + imgPath;
+		} else {
+			resolvedPath = `${docDir}/${imgPath}`;
+		}
+
+		const baseUrl = source.baseUrl || '';
+		const match = baseUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+		if (!match) return imgPath;
+
+		const [, owner, repo] = match;
+		const branch = source.branch || 'main';
+		return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${resolvedPath}`;
+	}
+
+	private resolveRelativePath(basePath: string, relativePath: string): string {
+		const baseParts = basePath.split('/');
+		const relParts = relativePath.split('/');
+		const parts = [...baseParts];
+
+		for (const part of relParts) {
+			if (part === '..') {
+				parts.pop();
+			} else if (part !== '.') {
+				parts.push(part);
+			}
+		}
+
+		return parts.join('/');
 	}
 
 	private parseGitHubUrl(url: string): { owner: string; repo: string; branch: string } | null {

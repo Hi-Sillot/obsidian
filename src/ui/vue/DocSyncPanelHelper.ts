@@ -48,10 +48,21 @@ import type {
 } from '../../types';
 import { useObsidianTheme } from './composables/useObsidianTheme';
 
+import type { AuditResult } from '../../sync/DocumentAuditor';
+
+export interface AuditFixRecord {
+	timestamp: number;
+	filePath: string;
+	line: number;
+	original: string;
+	fixed: string;
+	batchId: number;
+}
+
 const PANEL_CLASS = 'sillot-doc-sync-panel';
 
 type PanelState = 'minimized' | 'default' | 'expanded';
-type ActiveTab = 'sync' | 'publish' | 'components' | 'authors' | 'footnotes';
+type ActiveTab = 'sync' | 'publish' | 'components' | 'authors' | 'footnotes' | 'audit';
 type PublishDisplayMode = 'default' | 'expanded';
 type EditorMode = 'reading' | 'source' | 'live-preview';
 
@@ -125,6 +136,13 @@ export interface DocSyncPanelAPI {
 	refreshPanel: () => void;
 	loadAvailableAuthors: () => Promise<AuthorInfo[]>;
 	addAuthor: (author: AuthorInfo) => void;
+	getAuditResult: () => AuditResult | null;
+	runAudit: () => Promise<void>;
+	fixAuditIssue: (index: number) => Promise<void>;
+	fixAllAuditIssues: () => Promise<void>;
+	getDocumentContent: () => string;
+	getFixHistory: () => AuditFixRecord[];
+	undoLastFix: () => Promise<void>;
 }
 
 function createThemeOverrides(theme: 'dark' | 'light'): GlobalThemeOverrides {
@@ -240,6 +258,8 @@ export function createDocSyncPanelApp(
 	const showAddAuthorModal = ref(false);
 	const availableAuthors = ref<AuthorInfo[]>([]);
 	const loadingAuthors = ref(false);
+	const auditResult = ref<AuditResult | null>(api.getAuditResult());
+	const documentContent = ref(api.getDocumentContent());
 
 	const forceUpdate = () => {
 		panelState.value = api.getPanelState();
@@ -255,6 +275,8 @@ export function createDocSyncPanelApp(
 		authors.value = api.getAuthors();
 		currentFile.value = api.getCurrentFile();
 		isDesktop.value = api.isDesktop();
+		auditResult.value = api.getAuditResult();
+		documentContent.value = api.getDocumentContent();
 	};
 
 	const DocSyncPanelComponent = {
@@ -282,7 +304,7 @@ export function createDocSyncPanelApp(
 					}, [
 						panelState.value === 'minimized'
 							? renderMinimized(panelState, editorMode, syncBlocks, publishInfo, diffResult, activeTasks, isDesktop, onSetPanelState, onSetActiveTab, api)
-							: renderExpandedPanel(panelState, activeTab, editorMode, syncBlocks, publishInfo, diffResult, publishDisplayMode, compareSource, activeTasks, components, authors, currentFile, isDesktop, onSetPanelState, onSetActiveTab, api, showAddAuthorModal, availableAuthors, loadingAuthors),
+							: renderExpandedPanel(panelState, activeTab, editorMode, syncBlocks, publishInfo, diffResult, publishDisplayMode, compareSource, activeTasks, components, authors, currentFile, isDesktop, onSetPanelState, onSetActiveTab, api, showAddAuthorModal, availableAuthors, loadingAuthors, auditResult, documentContent),
 					])
 				});
 			};
@@ -428,6 +450,8 @@ function renderExpandedPanel(
 	showAddAuthorModal: Ref<boolean>,
 	availableAuthors: Ref<AuthorInfo[]>,
 	loadingAuthors: Ref<boolean>,
+	auditResult: Ref<AuditResult | null>,
+	documentContent: Ref<string>,
 ) {
 	const controls = h('div', { class: `${PANEL_CLASS}-controls` }, [
 		h(NButton, { size: 'tiny', quaternary: true, onClick: () => onSetPanelState('minimized') }, { default: () => '−' }),
@@ -451,6 +475,7 @@ function renderExpandedPanel(
 			h(NTabPane, { name: 'components', tab: '🏷️ 组件' }),
 			h(NTabPane, { name: 'authors', tab: '👤 作者' }),
 			h(NTabPane, { name: 'footnotes', tab: '📝 脚注' }),
+			h(NTabPane, { name: 'audit', tab: '🔍 审查' }),
 		],
 	});
 
@@ -470,6 +495,9 @@ function renderExpandedPanel(
 			break;
 		case 'footnotes':
 			tabContent = renderFootnotesTab(api);
+			break;
+		case 'audit':
+			tabContent = renderAuditTab(panelState, isDesktop, auditResult, documentContent, api);
 			break;
 	}
 
@@ -952,4 +980,120 @@ function renderFootnotesTab(api: DocSyncPanelAPI) {
 				])
 			)),
 	]);
+}
+
+function renderAuditTab(
+	panelState: Ref<PanelState>,
+	isDesktop: Ref<boolean>,
+	auditResult: Ref<AuditResult | null>,
+	documentContent: Ref<string>,
+	api: DocSyncPanelAPI,
+) {
+	const result = auditResult.value;
+	const issues = result?.issues || [];
+	const isExpanded = panelState.value === 'expanded';
+	const desktop = isDesktop.value;
+
+	const problemLines = new Set(issues.map(i => i.line));
+
+	const issueList = h('div', {
+		class: `${PANEL_CLASS}-audit-list`,
+	}, issues.map((issue, idx) =>
+		h('div', { class: `${PANEL_CLASS}-audit-item`, key: idx }, [
+			h(NSpace, { align: 'start', size: 6, vertical: true }, {
+				default: () => [
+					h(NSpace, { align: 'center', size: 6 }, {
+						default: () => [
+							h(NTag, { size: 'small', type: issue.severity === 'error' ? 'error' : 'warning' }, {
+								default: () => issue.severity === 'error' ? '错误' : '警告',
+							}),
+							h(NText, { depth: 3, style: { fontSize: '11px' } }, { default: () => `第 ${issue.line} 行` }),
+						],
+					}),
+					h(NText, { style: { fontSize: '12px' } }, { default: () => issue.message }),
+					h('div', { style: { fontSize: '11px', fontFamily: 'monospace', background: 'var(--background-primary)', padding: '4px 8px', borderRadius: '4px', wordBreak: 'break-all' } }, [
+						h(NText, { depth: 3, delete: true }, { default: () => issue.original }),
+						h('br'),
+						h(NText, { type: 'success' }, { default: () => issue.fixed }),
+					]),
+					h(NButton, { size: 'tiny', type: 'primary', onClick: () => api.fixAuditIssue(idx) }, { default: () => '修复' }),
+				],
+			}),
+		])
+	));
+
+	const sourcePanel = isExpanded && issues.length > 0
+		? h('div', {
+			class: `${PANEL_CLASS}-audit-source`,
+			style: {
+				flex: desktop ? '1' : '0 0 auto',
+				minWidth: '0',
+				minHeight: '0',
+				overflowY: 'auto',
+				maxHeight: desktop ? 'none' : '40vh',
+			},
+		},
+			documentContent.value.split('\n').map((line, i) => {
+				const lineNum = i + 1;
+				const isProblem = problemLines.has(lineNum);
+				return h('div', {
+					key: i,
+					class: `${PANEL_CLASS}-audit-source-line ${isProblem ? `${PANEL_CLASS}-audit-source-line--problem` : `${PANEL_CLASS}-audit-source-line--normal`}`,
+				}, [
+					h('span', { class: `${PANEL_CLASS}-audit-source-ln` }, `${lineNum}`),
+					h('span', { class: `${PANEL_CLASS}-audit-source-text` }, line || ' '),
+				]);
+			}))
+		: null;
+
+	const header = h(NSpace, { justify: 'space-between', align: 'center', style: { marginBottom: '8px', flexShrink: '0' } }, {
+		default: () => [
+			h(NText, { depth: 2 }, { default: () => `审查结果 (${issues.length})` }),
+			h(NSpace, { size: 4 }, {
+				default: () => [
+					h(NButton, { size: 'tiny', onClick: () => api.runAudit() }, { default: () => '重新审查' }),
+					issues.length > 0
+						? h(NButton, { size: 'tiny', type: 'primary', onClick: () => api.fixAllAuditIssues() }, { default: () => '一键修复' })
+						: null,
+					api.getFixHistory().length > 0
+						? h(NButton, { size: 'tiny', type: 'warning', onClick: () => api.undoLastFix() }, { default: () => '撤销' })
+						: null,
+				],
+			}),
+		],
+	});
+
+	const body = !result
+		? h('div', { style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '0' } },
+			h(NEmpty, { description: '点击「重新审查」开始检查', size: 'small' }))
+		: issues.length === 0
+			? h('div', { style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '0' } },
+				h(NEmpty, { description: '未发现问题', size: 'small' }))
+			: h('div', {
+				class: `${PANEL_CLASS}-audit-body`,
+				style: {
+					flex: 1,
+					minHeight: '0',
+					display: 'flex',
+					flexDirection: desktop ? 'row' : 'column',
+					gap: '8px',
+					overflow: 'hidden',
+				},
+			}, [
+				h('div', {
+					style: {
+						flex: desktop ? '1' : '0 0 auto',
+						minWidth: '0',
+						minHeight: '0',
+						overflowY: 'auto',
+						maxHeight: desktop ? 'none' : '40vh',
+					},
+				}, [issueList]),
+				sourcePanel,
+			]);
+
+	return h('div', {
+		class: `${PANEL_CLASS}-tab-content ${PANEL_CLASS}-tab-content--audit`,
+		style: { display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+	}, [header, body]);
 }
